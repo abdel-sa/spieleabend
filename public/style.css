@@ -1,0 +1,50 @@
+/* Spieleabend – ein dunkler Party-Look für Host-Bildschirm und Handys */
+:root{
+  --bg:#0e1320; --panel:#172036; --raise:#212c48; --line:#33405f;
+  --fg:#f1f4fb; --muted:#9aa6c4; --gold:#ffc93c; --ok:#3ddc97; --bad:#ff6b6b;
+  --t0:#4fb3ff; --t1:#ff9f45; --t2:#b98cff; --t3:#6ee07a;
+  --say:#ffd23f; --mime:#ff6f61;
+  --display:"Bricolage Grotesque","Arial Black",system-ui,sans-serif;
+  --body:"Barlow","Segoe UI",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px}
+button,input{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+button{cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+
+.btn{font-weight:600;font-size:15px;border:1px solid var(--line);background:transparent;padding:9px 14px;border-radius:10px}
+.btn:hover:not(:disabled){background:var(--raise)}
+.big{font-weight:700;font-size:18px;padding:14px 24px;border-radius:12px;border:0;background:var(--c,var(--gold));color:#141005}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.center{justify-content:center;text-align:center}
+.muted{color:var(--muted)}
+.lbl{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{font-weight:700;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--raise)}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid var(--c);color:var(--c)}
+.chip.done{background:var(--c);color:var(--bg)}
+.chip.off{opacity:.45;border-style:dashed}
+.clock{font-family:var(--display);font-weight:800;font-variant-numeric:tabular-nums}
+.clock.low{color:var(--bad)}
+.bar{height:8px;border-radius:999px;background:var(--raise);overflow:hidden;position:relative;width:100%}
+.bar::after{content:"";position:absolute;inset:0;width:calc(var(--p,1)*100%);background:var(--c,var(--gold));border-radius:999px;transition:width .2s linear}
+.err{color:var(--bad);margin:0;font-size:14px;min-height:1.2em}
+.num{font-variant-numeric:tabular-nums}
+
+/* Maßband */
+.tapewrap{padding:36px 8px 34px}
+.tape{position:relative;height:28px;border-radius:5px;background:var(--gold);
+  background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.4) 0 1px,transparent 1px 10%),repeating-linear-gradient(90deg,rgba(0,0,0,.22) 0 1px,transparent 1px 2%);
+  background-size:100% 60%,100% 30%;background-repeat:no-repeat}
+.mk{position:absolute;top:-7px;bottom:-7px;width:4px;margin-left:-2px;border-radius:2px;background:var(--c)}
+.mk span{position:absolute;left:50%;transform:translateX(-50%);font:700 13px var(--body);white-space:nowrap;color:var(--c)}
+.mk.up span{bottom:calc(100% + 4px + var(--lv,0)*20px)}
+.mk.dn span{top:calc(100% + 4px)}
+.mk.truth{width:6px;margin-left:-3px;top:-13px;bottom:-13px}
+.mk.edgeL span{left:0;transform:none}
+.mk.edgeR span{left:auto;right:0;transform:none}

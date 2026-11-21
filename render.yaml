@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: spieleabend
+    runtime: node
+    plan: free
+    buildCommand: "echo keine Pakete nötig"
+    startCommand: node server.js

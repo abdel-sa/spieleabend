@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e1320">
+<title>Spieleabend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<style>
+/* Handy: Kopfzeile mit Name und Teamfarbe · eine Karte je Spielphase */
+body{padding:max(14px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));min-height:100vh}
+.wrap{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.head{display:flex;align-items:center;gap:10px}
+.head .me{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.head .team{margin-left:auto}
+.head .conn{font-size:12px;color:var(--bad)}
+.card{background:var(--panel);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:16px;border-top:6px solid var(--c,var(--line))}
+.title{font:800 34px/1 var(--display);margin:0;text-wrap:balance}
+.title span{color:var(--gold)}
+.q{font:700 22px/1.3 var(--body);margin:0;text-wrap:balance}
+.eyebrow{font:700 12px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+.wait{color:var(--muted);font-weight:600;margin:0;line-height:1.45}
+.field{display:flex;align-items:center;border:2px solid var(--c,var(--line));border-radius:12px;background:var(--bg);min-width:0}
+.field input{flex:1;min-width:0;border:0;background:transparent;font:800 30px/1 var(--display);padding:12px 14px}
+.field input:focus{outline:none}
+.field .unit{padding-right:14px;color:var(--muted);font-weight:600;white-space:nowrap}
+.text{width:100%;font:700 20px var(--body);padding:13px 14px;border-radius:12px;border:2px solid var(--c,var(--line));background:var(--bg)}
+.bigteam{font:800 40px/1 var(--display);color:var(--c);margin:0}
+.mates{display:flex;flex-wrap:wrap;gap:6px}
+.buzz{width:min(72vw,280px);aspect-ratio:1;border-radius:50%;border:0;background:radial-gradient(circle at 35% 30%,#ff8a8a,#e03131 60%,#a51d1d);
+  color:#fff;font:800 44px var(--display);box-shadow:0 10px 0 #7a1414,0 16px 30px rgba(0,0,0,.5);margin:6px auto;touch-action:manipulation}
+.buzz:active{transform:translateY(8px);box-shadow:0 2px 0 #7a1414}
+.word{font:800 clamp(34px,11vw,56px)/1.05 var(--display);margin:0;text-align:center;text-wrap:balance;overflow-wrap:anywhere;color:var(--mc,var(--fg))}
+.mode{font:800 40px/1 var(--display);color:var(--mc);margin:0}
+.diff{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.diff button{background:var(--raise);border:2px solid var(--line);border-radius:12px;padding:14px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600;font-size:14px}
+.diff button b{font:800 32px var(--display);color:var(--mc)}
+.board{display:grid;gap:6px}
+.board .cat{font:700 10px var(--body);text-transform:uppercase;text-align:center;color:var(--muted);overflow-wrap:anywhere}
+.board button{background:var(--raise);border:0;border-radius:8px;padding:12px 0;font:800 18px var(--display);color:var(--gold)}
+.board button:disabled{background:#121a2c;color:transparent;opacity:1}
+.result{font:800 28px/1.1 var(--display);margin:0}
+.ans{font:800 30px/1.1 var(--display);color:var(--gold);margin:0}
+.full{width:100%}
+.clockline{display:flex;align-items:center;gap:12px}
+.clockline .clock{font-size:28px}
+.secret{font-size:13px;color:var(--muted);text-align:center;margin:0}
+.rank div{display:flex;justify-content:space-between;padding:10px 12px;border-radius:10px;background:var(--raise);border-left:5px solid var(--c);font-weight:700}
+.rank{display:flex;flex-direction:column;gap:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head" id="head"></div>
+  <section class="card" id="card"><p class="wait">Verbinde …</p></section>
+</div>
+<script src="/common.js"></script>
+<script>
+const qs = new URLSearchParams(location.search);
+let room = (qs.get("r") || store.get("spieleabend-room") || "").toUpperCase();
+let token = room ? (store.get("spieleabend-token-" + room) || "") : "";
+let V = null, sse = null, lastKey = "", draft = {};
+const act = (what, data) => post("act", { room, token, do:what, ...(data||{}) }).catch(e => { if (e.status === 401){ store.del("spieleabend-token-" + room); token = ""; render(); } else toast(e.message); });
+const buzzFeel = () => { try { navigator.vibrate && navigator.vibrate(60); } catch(e){} };
+function toast(m){ const p = el("p", "err", m); $("card").prepend(p); setTimeout(() => p.remove(), 3500); }
+
+function start(){
+  if (!room){ renderCode(); return; }
+  store.set("spieleabend-room", room);
+  if (sse) sse.close();
+  sse = connect({ room, token }, v => {
+    if (token && !v.you){ store.del("spieleabend-token-" + room); token = ""; return start(); }
+    const key = [v.game, v.phase, v.cur && v.cur.q, v.isExplainer, v.round].join("|");
+    if (key !== lastKey && V){ if ((v.phase === "buzz" && v.cur) || (v.game === "act" && v.isExplainer && v.phase === "choose") || (v.game === "leo" && v.phase === "board" && v.you && v.turn === v.you.team)) buzzFeel(); }
+    lastKey = key; V = v; render();
+  }, ok => { const c = document.querySelector(".head .conn"); if (c) c.textContent = ok ? "" : "offline"; });
+  fetch("/events?room=" + room).then(r => { if (r.status === 404){ store.del("spieleabend-room"); room = ""; renderCode("Diesen Raum gibt es nicht mehr. Bitte den neuen QR-Code scannen."); } else r.body?.cancel(); });
+}
+
+/* Eingaben bei Updates behalten */
+function keepInputs(fn){
+  const a = document.activeElement, id = a && a.id;
+  document.querySelectorAll("input[id]").forEach(i => draft[i.id] = i.value);
+  fn();
+  document.querySelectorAll("input[id]").forEach(i => { if (draft[i.id] != null && !i.dataset.fresh) i.value = draft[i.id]; });
+  if (id && $(id)) $(id).focus();
+}
+
+function renderCode(msg){
+  $("head").innerHTML = "";
+  const c = $("card"); c.innerHTML = "";
+  const h = el("h1", "title"); h.innerHTML = "Spiele<span>abend</span>"; c.appendChild(h);
+  c.appendChild(el("p", "wait", msg || "Scanne den QR-Code am Host-Bildschirm oder gib den Raum-Code ein."));
+  const f = el("form", "row"); const i = el("input", "text"); i.id = "code"; i.maxLength = 4; i.placeholder = "z. B. KXQT"; i.autocapitalize = "characters"; i.style.flex = "1";
+  const b = el("button", "big", "Weiter"); f.append(i, b);
+  f.onsubmit = e => { e.preventDefault(); room = i.value.trim().toUpperCase(); if (room.length === 4){ token = store.get("spieleabend-token-" + room) || ""; start(); } };
+  c.appendChild(f);
+}
+
+function render(){ keepInputs(_render); }
+function _render(){
+  const c = $("card"); c.innerHTML = ""; c.style.removeProperty("--c"); c.style.removeProperty("--mc");
+  const h = $("head"); h.innerHTML = "";
+  if (!V.you){ renderJoin(c); return; }
+  const me = V.you, myT = V.teams[me.team];
+  h.append(el("span", "me", me.name), el("span", "conn"));
+  const tc = el("span", "chip team", myT ? myT.name : ""); tc.style.setProperty("--c", TC(me.team)); h.appendChild(tc);
+  c.style.setProperty("--c", TC(me.team));
+  if (!V.game) return renderLobby(c);
+  if (V.phase === "end") return renderEnd(c);
+  if (V.game === "sch") renderSch(c);
+  if (V.game === "leo") renderLeo(c);
+  if (V.game === "act") renderAct(c);
+}
+
+function renderJoin(c){
+  const h = el("h1", "title"); h.innerHTML = "Spiele<span>abend</span>"; c.appendChild(h);
+  c.appendChild(el("p", "wait", "Gib deinen Namen ein. Die Teams werden automatisch verteilt."));
+  const f = el("form"); f.style.cssText = "display:flex;flex-direction:column;gap:10px";
+  const i = el("input", "text"); i.id = "name"; i.maxLength = 20; i.placeholder = "Dein Name"; i.autocomplete = "nickname";
+  const b = el("button", "big full", "Mitspielen"); const err = el("p", "err");
+  f.append(i, b, err);
+  f.onsubmit = async e => { e.preventDefault();
+    try { const r = await post("join", { room, name:i.value, token }); token = r.token; store.set("spieleabend-token-" + room, token); start(); }
+    catch(x){ err.textContent = x.message; } };
+  c.appendChild(f);
+  setTimeout(() => i.focus(), 50);
+}
+
+function renderLobby(c){
+  const t = V.teams[V.you.team];
+  c.appendChild(el("p", "eyebrow", "Du spielst in"));
+  c.appendChild(el("p", "bigteam", t.name));
+  const m = el("div", "mates");
+  t.members.forEach(x => { const s = el("span", "chip" + (x.id === V.you.id ? " done" : ""), x.name); s.style.setProperty("--c", TC(V.you.team)); m.appendChild(s); });
+  c.appendChild(m);
+  c.appendChild(el("p", "wait", "Der Host-Bildschirm wählt das Spiel. Gleich geht's los."));
+}
+
+/* ---------- Schätz-Duell ---------- */
+function renderSch(c){
+  const Q = V.q, mine = V.guesses.find(p => p.id === V.you.id);
+  c.appendChild(el("p", "eyebrow", Q.cat + " · Frage " + (V.round+1) + " / " + V.total));
+  c.appendChild(el("p", "q", Q.text));
+  if (V.phase === "guess"){
+    if (V.endAt){ const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, V.time)); c.appendChild(l); }
+    const f = el("form"); f.style.cssText = "display:flex;flex-direction:column;gap:10px";
+    const fl = el("div", "field"); const i = el("input"); i.id = "guess-" + V.round; i.inputMode = "decimal"; i.autocomplete = "off";
+    i.placeholder = Q.year ? "Jahr" : "Deine Schätzung"; fl.append(i, el("span", "unit", Q.unit));
+    const b = el("button", "big full", mine.submitted ? "Ändern" : "Abschicken"); const err = el("p", "err");
+    f.append(fl, b, err);
+    f.onsubmit = e => { e.preventDefault(); const n = parseNum(i.value);
+      if (isNaN(n)){ err.textContent = "Bitte eine Zahl eingeben, z. B. 2850, 3,05 oder 1,8 Mio."; return; }
+      act("guess", { value:n }); i.blur(); };
+    c.appendChild(f);
+    if (mine.submitted) c.appendChild(el("p", "wait", "Abgeschickt: " + (Q.year ? mine.value : fmt(mine.value) + " " + Q.unit) + ". Du kannst bis zur Auflösung ändern."));
+    const left = V.guesses.filter(p => !p.submitted).length;
+    c.appendChild(el("p", "secret", left ? "Noch " + left + " am Schätzen …" : "Alle haben geschätzt!"));
+    return;
+  }
+  const a = V.answer.value;
+  c.appendChild(el("p", "eyebrow", "Richtige Antwort"));
+  c.appendChild(el("p", "ans", Q.year ? String(a) : fmt(a) + " " + Q.unit));
+  if (mine.value != null){
+    c.appendChild(el("p", "result", mine.pts ? "+" + mine.pts + (mine.hit ? " · Volltreffer!" : " · Am nächsten dran!") : "Kein Punkt"));
+    c.appendChild(el("p", "wait", "Deine Schätzung: " + (Q.year ? mine.value : fmt(mine.value)) + " · " + pct(mine.value, a) + " daneben"));
+  } else c.appendChild(el("p", "wait", "Du hast nicht geschätzt."));
+  c.appendChild(el("p", "secret", "Die Auflösung siehst du am Host-Bildschirm."));
+}
+
+/* ---------- Leopardy ---------- */
+function renderLeo(c){
+  const my = V.you.team, cur = V.cur, tn = i => V.teams[i].name;
+  if (V.phase === "board"){
+    if (V.turn !== my){ c.appendChild(el("p", "q", tn(V.turn) + " wählt ein Feld …")); c.appendChild(el("p", "wait", "Halte den Finger bereit. Sobald die Frage kommt, wird gebuzzert.")); return; }
+    c.appendChild(el("p", "q", "Ihr seid dran! Wählt ein Feld."));
+    const bd = el("div", "board"); bd.style.gridTemplateColumns = `repeat(${V.board.cats.length}, minmax(0,1fr))`;
+    V.board.cats.forEach(n => bd.appendChild(el("div", "cat", n)));
+    V.board.rows.forEach(row => V.board.cats.forEach((n, ci) => {
+      const b = el("button", null, row.value); b.disabled = V.board.used[ci + "-" + row.lv] !== undefined;
+      b.setAttribute("aria-label", n + " für " + row.value); b.onclick = () => act("pick", { ci, lv:row.lv }); bd.appendChild(b);
+    }));
+    c.appendChild(bd);
+    return;
+  }
+  c.appendChild(el("p", "eyebrow", cur.cat + " · " + cur.value));
+  c.appendChild(el("p", "q", cur.q));
+  if (V.phase === "buzz"){
+    if (cur.tried.includes(my)){ c.appendChild(el("p", "wait", "Euer Team hat schon geantwortet. Jetzt sind die anderen dran.")); }
+    else { const b = el("button", "buzz", "BUZZ"); b.onclick = () => { buzzFeel(); act("buzz"); }; c.appendChild(b); }
+    const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, cur.wrongs.length ? 20 : 35)); c.appendChild(l);
+  }
+  if (V.phase === "answer"){
+    if (cur.buzzTeam === my && V.input === "rufen"){
+      c.appendChild(el("p", "result", (cur.buzzName === V.you.name ? "Du hast gebuzzert!" : cur.buzzName + " hat gebuzzert!") + " Sagt die Antwort laut."));
+      c.appendChild(el("p", "wait", "Der Spielleiter am Host-Bildschirm entscheidet, ob es stimmt."));
+    } else if (cur.buzzTeam === my){
+      c.appendChild(el("p", "result", cur.buzzName === V.you.name ? "Du hast gebuzzert! Antwort eintippen:" : cur.buzzName + " hat gebuzzert. Eure Antwort:"));
+      const f = el("form"); f.style.cssText = "display:flex;flex-direction:column;gap:10px";
+      const i = el("input", "text"); i.id = "answer-" + cur.q.length + "-" + cur.wrongs.length; i.autocomplete = "off"; i.autocapitalize = "off"; i.spellcheck = false; i.placeholder = "Antwort";
+      const b = el("button", "big full", "Antwort senden"); f.append(i, b);
+      f.onsubmit = e => { e.preventDefault(); if (i.value.trim()) act("answer", { text:i.value }); };
+      c.appendChild(f);
+      c.appendChild(el("p", "secret", "Kleine Tippfehler sind kein Problem."));
+      setTimeout(() => { if (document.activeElement !== i) i.focus(); }, 50);
+    } else c.appendChild(el("p", "wait", tn(cur.buzzTeam) + " war schneller und antwortet gerade …"));
+    const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, cur.answerSec)); c.appendChild(l);
+  }
+  if (V.phase === "result"){
+    c.appendChild(el("p", "result", cur.ok ? (cur.winner === my ? "Richtig! +" + cur.value + " für euch" : tn(cur.winner) + " hatte recht") : "Keiner wusste es"));
+    c.appendChild(el("p", "ans", cur.answer));
+    const mine = cur.wrongs.filter(w => w.team === my);
+    if (mine.length) c.appendChild(el("p", "wait", "Eure Antwort „" + mine[0].text + "“ war leider falsch (−" + cur.value + ")."));
+  }
+}
+
+/* ---------- Erklären & Pantomime ---------- */
+function renderAct(c){
+  const my = V.you.team, mine = V.turn === my, tn = V.teams[V.turn].name;
+  const mc = V.mode === "say" ? "var(--say)" : "var(--mime)", mname = V.mode === "say" ? "Erklären" : "Pantomime";
+  c.style.setProperty("--mc", mc);
+  if (V.phase === "who"){
+    c.appendChild(el("p", "mode", mname));
+    if (V.all) c.appendChild(el("p", "result", "Alle Teams dürfen raten!"));
+    if (mine){
+      c.appendChild(el("p", "q", "Wer von euch macht es?"));
+      const b = el("button", "big full", "Ich mach's!"); b.style.setProperty("--c", mc); b.onclick = () => act("claim"); c.appendChild(b);
+      if (V.suggestName) c.appendChild(el("p", "secret", "Vorschlag: " + V.suggestName));
+    } else c.appendChild(el("p", "wait", tn + " sucht jemanden aus …"));
+    return;
+  }
+  if (V.isExplainer){
+    c.appendChild(el("p", "mode", mname));
+    if (V.phase === "choose"){
+      c.appendChild(el("p", "q", "Wähle die Schwierigkeit"));
+      const d = el("div", "diff");
+      [[3,"Leicht"],[4,"Mittel"],[5,"Schwer"]].forEach(([p, l]) => { const b = el("button"); b.appendChild(el("b", null, p)); b.append(l); b.onclick = () => act("diff", { pts:p }); d.appendChild(b); });
+      c.appendChild(d);
+      const u = el("button", "btn", "Doch nicht ich"); u.onclick = () => act("unclaim"); c.appendChild(u);
+    }
+    if (V.phase === "ready"){
+      c.appendChild(el("p", "secret", "Nur du siehst die Begriffe. Handy nicht herzeigen! Nach jedem Treffer kommt sofort der nächste."));
+      c.appendChild(el("p", "word", V.word));
+      const r = el("div", "row center");
+      const s = el("button", "btn", "Anderer Begriff"); s.onclick = () => act("swapWord");
+      const go = el("button", "big", "Start"); go.style.setProperty("--c", mc); go.onclick = () => act("go");
+      r.append(s, go); c.appendChild(r);
+    }
+    if (V.phase === "run"){
+      const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, V.time)); c.appendChild(l);
+      c.appendChild(el("p", "word", V.word));
+      if (V.input === "tippen"){
+        c.appendChild(el("p", "wait", (V.all ? "Alle" : "Dein Team") + " tippen die Lösung am Handy. Ist sie richtig, kommt automatisch der nächste Begriff."));
+        renderFeed(c);
+      } else if (V.all){
+        c.appendChild(el("p", "eyebrow", "Wer hat's erraten?"));
+        const r = el("div", "row");
+        V.teams.forEach((t, i) => { if (!t.members.length) return; const b = el("button", "big", t.name); b.style.setProperty("--c", TC(i)); b.onclick = () => { buzzFeel(); act("got", { team:i }); }; r.appendChild(b); });
+        c.appendChild(r);
+      } else { const b = el("button", "big full", "Richtig! +" + V.pts); b.style.setProperty("--c", "var(--ok)"); b.onclick = () => { buzzFeel(); act("got"); }; c.appendChild(b); }
+      const f = el("button", "btn", "Runde beenden"); f.onclick = () => act("fail"); c.appendChild(f);
+      c.appendChild(el("p", "secret", V.guessed + " erraten · " + (V.input === "rufen" ? "erst wenn du „Richtig!“ drückst, kommt der nächste Begriff" : "der nächste Begriff kommt, sobald jemand richtig tippt")));
+    }
+    if (V.phase === "result"){
+      renderWords(c);
+      const n = el("button", "big full", "Nächstes Team"); n.onclick = () => act("actNext"); c.appendChild(n);
+    }
+    return;
+  }
+  // alle anderen: Begriff nie sichtbar
+  c.appendChild(el("p", "mode", mname));
+  const guessing = V.all || mine;
+  if (V.phase === "choose" || V.phase === "ready") c.appendChild(el("p", "q", V.explainerName + (V.phase === "choose" ? " wählt die Schwierigkeit …" : " schaut sich den Begriff an …")));
+  if (V.phase === "run"){
+    const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, V.time)); c.appendChild(l);
+    if (V.canType){
+      c.appendChild(el("p", "q", V.mode === "say" ? "Hör zu und tippe die Lösung ein!" : "Schau hin und tippe die Lösung ein!"));
+      const f = el("form", "row"); const i = el("input", "text"); i.id = "wordguess"; i.autocomplete = "off"; i.autocapitalize = "off"; i.spellcheck = false; i.placeholder = "Lösung"; i.style.flex = "1";
+      const b = el("button", "big", "Senden"); f.append(i, b);
+      f.onsubmit = e => { e.preventDefault(); const t = i.value.trim(); if (!t) return; draft.wordguess = ""; i.value = ""; act("guessWord", { text:t }); i.focus(); };
+      c.appendChild(f);
+      const mine = V.feed.filter(x => x.name === V.you.name).slice(-1)[0];
+      if (mine) c.appendChild(el("p", mine.ok ? "result" : "err", mine.ok ? "Richtig! " + mine.text : "„" + mine.text + "“ ist es nicht"));
+      renderFeed(c);
+    } else c.appendChild(el("p", "q", guessing ? (V.mode === "say" ? "Hör gut zu und rate laut!" : "Schau genau hin und rate laut!") : tn + " ist dran. Nicht vorsagen!"));
+  }
+  if (V.phase === "run") c.appendChild(el("p", "result", V.guessed + (V.guessed === 1 ? " Begriff" : " Begriffe") + " erraten"));
+  if (V.phase === "result") renderWords(c);
+  else c.appendChild(el("p", "secret", "Die Begriffe sieht nur " + (V.explainerName || "die Person, die dran ist") + " am eigenen Handy."));
+}
+function renderFeed(c){
+  if (!V.feed || !V.feed.length) return;
+  const m = el("div", "mates");
+  V.feed.slice(-6).forEach(x => { const s = el("span", "chip" + (x.ok ? " done" : ""), x.name + ": " + x.text + (x.ok ? " ✓" : "")); s.style.setProperty("--c", TC(x.team)); m.appendChild(s); });
+  c.appendChild(m);
+}
+function renderWords(c){
+  const got = V.words.filter(x => x.team != null);
+  c.appendChild(el("p", "result", got.length ? got.length + (got.length === 1 ? " Begriff" : " Begriffe") + " erraten" : "Kein Begriff erraten"));
+  const m = el("div", "mates");
+  V.words.forEach(x => { const s = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " ✓" : "")); s.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); m.appendChild(s); });
+  c.appendChild(m);
+}
+
+function renderEnd(c){
+  const r = V.ranking || [];
+  c.appendChild(el("p", "eyebrow", "Spielende"));
+  c.appendChild(el("p", "title", (r[0]?.name || "–") + " gewinnt!"));
+  const d = el("div", "rank");
+  r.forEach((x, i) => { const row = el("div"); row.style.setProperty("--c", V.game === "sch" && V.mode === "solo" ? PC[i % PC.length] : TC(x.team));
+    row.append(el("span", null, (i+1) + ". " + x.name), el("span", "num", x.score + " P")); d.appendChild(row); });
+  c.appendChild(d);
+}
+
+start();
+</script>
+</body>
+</html>

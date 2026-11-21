@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spieleabend · Host</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<style>
+/* Host: Kopfzeile · Bühne in der Mitte · Punktestand unten. Gedacht für Laptop/TV, gut lesbar aus ein paar Metern. */
+body{padding:18px 24px 24px;min-height:100vh;display:flex;flex-direction:column;gap:16px}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{font:800 26px/1 var(--display);letter-spacing:-.01em}
+.logo span{color:var(--gold)}
+.code{font:800 18px var(--display);letter-spacing:.18em;padding:6px 12px;border-radius:10px;background:var(--panel)}
+.top .sp{flex:1}
+.miniqr{display:flex;align-items:center;gap:10px;background:var(--panel);padding:6px 10px 6px 6px;border-radius:12px;font-size:13px;color:var(--muted)}
+.miniqr .q{background:#fff;border-radius:6px;padding:4px;line-height:0}
+.miniqr .q img{width:64px;height:64px;display:block}
+.conn{font-size:13px;color:var(--muted)}
+.conn.off{color:var(--bad)}
+
+.stage{flex:1;display:flex;flex-direction:column;gap:20px;align-items:center;justify-content:center;text-align:center;min-height:0}
+.stage.top{justify-content:flex-start}
+.eyebrow{font:700 15px var(--body);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0}
+.eyebrow b{color:var(--gold)}
+.hq{font:700 clamp(28px,3.6vw,54px)/1.2 var(--body);margin:0;max-width:30ch;text-wrap:balance}
+.huge{font:800 clamp(56px,9vw,140px)/.95 var(--display);margin:0;letter-spacing:-.02em;text-wrap:balance}
+.ans{font:800 clamp(40px,6vw,92px)/1 var(--display);color:var(--gold);margin:0;text-wrap:balance}
+.ans small{display:block;font:500 20px var(--body);color:var(--muted);margin-top:10px}
+.stage .clock{font-size:clamp(44px,6vw,84px)}
+.ctrl .clock{font-size:inherit;margin-left:6px}
+.stage .bar{max-width:720px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:1000px}
+.chips .chip{font-size:17px;padding:7px 14px}
+.verdict{font:800 clamp(30px,4vw,56px)/1.05 var(--display);margin:0;text-wrap:balance}
+.ctrl{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+/* Lobby */
+.lobby{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:28px;width:100%;max-width:1300px;text-align:left;align-items:start}
+.join{background:var(--panel);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center}
+.join .q{background:#fff;border-radius:14px;padding:12px;line-height:0}
+.join .q img{width:240px;height:240px;display:block;image-rendering:pixelated}
+.join h2{font:800 30px/1.05 var(--display);margin:0}
+.join .url{font:700 18px var(--body);word-break:break-all}
+.join .codebig{font:800 44px var(--display);letter-spacing:.2em;color:var(--gold)}
+.side{display:flex;flex-direction:column;gap:22px;min-width:0}
+.teamgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.tcol{background:var(--panel);border-radius:14px;border-top:5px solid var(--c);padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.tcol input{background:transparent;border:0;border-bottom:1px dashed var(--line);font:800 20px var(--display);color:var(--c);padding:2px 0;width:100%;min-width:0}
+.tcol .m{display:flex;align-items:center;gap:6px;font-size:17px;font-weight:600}
+.tcol .m.off{opacity:.45}
+.tcol .m button{margin-left:auto;border:0;background:transparent;color:var(--muted);font-size:18px;padding:0 4px}
+.tcol .empty{color:var(--muted);font-size:14px}
+.games{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}
+.game{background:var(--panel);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px;border:1px solid var(--line)}
+.game h3{margin:0;font:800 26px/1 var(--display)}
+.game p{margin:0;color:var(--muted);line-height:1.4;font-size:15px}
+.game .opt{display:flex;flex-direction:column;gap:6px}
+.game .big{margin-top:auto}
+.last{background:var(--panel);border-radius:12px;padding:10px 14px;color:var(--muted)}
+.last b{color:var(--gold)}
+
+/* Punktestand */
+.scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.sc{background:var(--panel);border-radius:14px;border-top:5px solid var(--c);padding:10px 14px;display:flex;align-items:center;gap:10px;min-width:0}
+.sc .n{font-weight:700;color:var(--c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:18px}
+.sc .p{font:800 38px/1 var(--display);font-variant-numeric:tabular-nums}
+.sc .pm{display:flex;flex-direction:column;gap:2px}
+.sc .pm button{border:0;background:var(--raise);border-radius:5px;font-size:12px;padding:1px 6px;color:var(--muted)}
+.sc.turn{box-shadow:0 0 0 3px var(--c)}
+
+/* Leopardy */
+.board{display:grid;gap:8px;width:100%;max-width:1200px}
+.board .cat{font:700 clamp(12px,1.3vw,18px) var(--body);text-transform:uppercase;letter-spacing:.06em;padding:10px 4px;border-bottom:3px solid var(--gold)}
+.tile{font:800 clamp(20px,2.6vw,40px) var(--display);color:var(--gold);background:var(--raise);border:0;border-radius:10px;padding:clamp(10px,1.5vw,22px) 4px}
+.tile:hover:not(:disabled){background:#2c3a5e}
+.tile:disabled{opacity:1;background:#121a2c;color:transparent}
+.tile.won{color:var(--c);font:700 15px var(--body)}
+.wrongs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+
+/* Schätz-Auflösung */
+.glist{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;width:100%;max-width:1100px}
+.g{border-radius:12px;padding:10px 12px;border:2px solid var(--line);text-align:left;min-width:0}
+.g.win{border-color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.g .w{font-weight:700;color:var(--c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.g .v{font:800 28px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.g .o{font-size:13px;color:var(--muted)}
+.tapebox{width:100%;max-width:1100px}
+
+.mode{font:800 clamp(48px,7vw,110px)/1 var(--display);color:var(--mc);margin:0}
+.podium{display:flex;flex-direction:column;gap:10px;width:100%;max-width:640px}
+.podium div{display:flex;justify-content:space-between;gap:12px;padding:14px 18px;border-radius:14px;background:var(--panel);border-left:6px solid var(--c);font:700 24px var(--body)}
+.podium div:first-child{font-size:32px;background:color-mix(in srgb,var(--c) 18%,var(--panel))}
+.confirm{display:flex;gap:8px;align-items:center}
+@media (max-width:900px){ .lobby{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo">Spiele<span>abend</span></div>
+  <div class="code" id="code">····</div>
+  <div class="sp"></div>
+  <div class="miniqr" id="miniqr" hidden></div>
+  <span class="conn" id="conn">verbinde …</span>
+  <span id="topBtns"></span>
+</div>
+<main class="stage" id="stage"><p class="muted">Raum wird erstellt …</p></main>
+<div class="scores" id="scores"></div>
+
+<script src="/qrcode.js"></script>
+<script src="/common.js"></script>
+<script>
+let V = null, H = store.get("spieleabend-host"), sse = null, confirmEnd = false;
+const opts = store.get("spieleabend-opts") || { sch:{ mode:"solo", rounds:10, time:60, cats:[] }, leo:{ board:"kurz", input:"tippen" }, act:{ time:90, goal:50, input:"rufen" } };
+opts.leo.input = opts.leo.input || "tippen"; opts.act.input = opts.act.input || "rufen";
+if (![30,50,75,100].includes(opts.act.goal)) opts.act.goal = 50;
+const saveOpts = () => store.set("spieleabend-opts", opts);
+const host = (what, data) => post("host", { room:H.room, hostToken:H.hostToken, do:what, ...(data||{}) }).catch(e => flash(e.message));
+
+function joinUrl(){
+  const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+  const base = local && V.urls.length ? V.urls[0] : location.origin;
+  return base + "/?r=" + V.code;
+}
+function qrImg(text, cell){
+  const q = qrcode(0, "M"); q.addData(text); q.make();
+  const i = new Image(); i.src = q.createDataURL(cell || 8, 2); i.alt = "QR-Code zum Beitreten"; return i;
+}
+function flash(msg){ const p = el("p", "err", msg); $("stage").prepend(p); setTimeout(() => p.remove(), 4000); }
+
+async function boot(){
+  if (!H){ H = await post("create", {}); store.set("spieleabend-host", H); }
+  sse = connect({ room:H.room, host:H.hostToken }, v => {
+    if (!v.host){ store.del("spieleabend-host"); location.reload(); return; }
+    V = v; render();
+  }, ok => { $("conn").textContent = ok ? "" : "Verbindung weg …"; $("conn").classList.toggle("off", !ok); });
+  // Raum existiert nicht mehr (Server neu gestartet): neuen erstellen
+  fetch("/events?room=" + H.room).then(r => { if (r.status === 404){ store.del("spieleabend-host"); location.reload(); } else r.body?.cancel(); });
+}
+
+/* ---------- Render ---------- */
+function render(){
+  const ae = document.activeElement, fid = ae && ae.tagName === "INPUT" ? ae.id : null, fval = fid ? ae.value : null;
+  _render();
+  if (fid && $(fid)){ $(fid).value = fval; $(fid).focus(); }
+}
+function _render(){
+  $("code").textContent = V.code;
+  const inGame = !!V.game;
+  const mq = $("miniqr"); mq.hidden = !inGame; mq.innerHTML = "";
+  if (inGame){ const d = el("div", "q"); d.appendChild(qrImg(joinUrl(), 3)); mq.append(d, el("span", null, "Später dazukommen? Scannen.")); }
+  const tb = $("topBtns"); tb.innerHTML = "";
+  if (inGame && V.phase !== "end"){
+    if (!confirmEnd){ const b = el("button", "btn", "Spiel beenden"); b.onclick = () => { confirmEnd = true; render(); }; tb.appendChild(b); }
+    else {
+      const w = el("span", "confirm"); w.append(el("span", "muted", "Wirklich beenden?"));
+      const y = el("button", "btn", "Ja, Ergebnis zeigen"); y.onclick = () => { confirmEnd = false; host("finish"); };
+      const n = el("button", "btn", "Weiterspielen"); n.onclick = () => { confirmEnd = false; render(); };
+      w.append(y, n); tb.appendChild(w);
+    }
+  }
+  const fs = el("button", "btn", "Vollbild"); fs.onclick = () => document.documentElement.requestFullscreen?.().catch(() => {}); tb.appendChild(fs);
+
+  const st = $("stage"); st.innerHTML = ""; st.className = "stage";
+  if (!inGame) renderLobby(st);
+  else if (V.phase === "end") renderEnd(st);
+  else if (V.game === "sch") renderSch(st);
+  else if (V.game === "leo") renderLeo(st);
+  else if (V.game === "act") renderAct(st);
+  renderScores();
+}
+
+function renderScores(){
+  const s = $("scores"); s.innerHTML = "";
+  if (!V.game) return;
+  if (V.game === "sch" && V.mode === "solo"){
+    const list = V.guesses.map(p => ({ ...p, score:V.scores[p.id] || 0 })).sort((a,b) => b.score - a.score);
+    list.forEach((p, i) => { const d = el("div", "sc"); d.style.setProperty("--c", PC[V.guesses.findIndex(x => x.id === p.id) % PC.length]);
+      d.append(el("span", "n", (i+1) + ". " + p.name), el("span", "p", p.score)); s.appendChild(d); });
+    return;
+  }
+  V.teams.forEach((t, i) => {
+    if (!t.members.length) return;
+    const d = el("div", "sc" + ((V.game === "leo" || V.game === "act") && V.turn === i ? " turn" : "")); d.style.setProperty("--c", TC(i));
+    d.append(el("span", "n", t.name), el("span", "p", V.teamScores[i]));
+    const pm = el("div", "pm"); const step = V.game === "leo" ? 100 : 1;
+    [["+", step], ["−", -step]].forEach(([l, dv]) => { const b = el("button", null, l + Math.abs(dv)); b.title = "Punkte korrigieren"; b.onclick = () => host("score", { team:i, delta:dv }); pm.appendChild(b); });
+    d.appendChild(pm); s.appendChild(d);
+  });
+}
+
+function seg(list, val, label, set){
+  const s = el("div", "seg");
+  list.forEach(x => { const b = el("button", null, label(x)); b.setAttribute("aria-pressed", x === val); b.onclick = () => { set(x); saveOpts(); render(); }; s.appendChild(b); });
+  return s;
+}
+function opt(label, node){ const d = el("div", "opt"); d.append(el("span", "lbl", label), node); return d; }
+
+function renderLobby(st){
+  st.classList.add("top");
+  const L = el("div", "lobby");
+  const j = el("div", "join");
+  const q = el("div", "q"); q.appendChild(qrImg(joinUrl(), 8));
+  j.append(el("h2", null, "Scannen und mitspielen"), q, el("div", "codebig", V.code), el("div", "url", joinUrl().replace(/^https?:\/\//, "")));
+  const total = V.teams.reduce((n, t) => n + t.members.length, 0);
+  j.appendChild(el("div", "muted", total ? total + (total === 1 ? " Person ist" : " Personen sind") + " da" : "Noch niemand da"));
+  L.appendChild(j);
+
+  const side = el("div", "side");
+  if (V.lastResult){ const l = el("div", "last"); l.append("Letztes Spiel: "); l.appendChild(el("b", null, V.lastResult.ranking[0]?.name || "–")); l.append(" hat gewonnen."); side.appendChild(l); }
+  const head = el("div", "row");
+  head.append(el("span", "lbl", "Teams"), seg([2,3,4], V.teamCount, n => n + " Teams", n => host("teams", { n })));
+  const sh = el("button", "btn", "Neu mischen"); sh.onclick = () => host("shuffle"); head.appendChild(sh);
+  side.appendChild(head);
+  const tg = el("div", "teamgrid");
+  V.teams.forEach((t, i) => {
+    const c = el("div", "tcol"); c.style.setProperty("--c", TC(i));
+    const nm = el("input"); nm.id = "tname-" + i; nm.value = t.name; nm.maxLength = 20; nm.setAttribute("aria-label", "Teamname");
+    nm.onchange = () => host("rename", { team:i, name:nm.value });
+    c.appendChild(nm);
+    if (!t.members.length) c.appendChild(el("div", "empty", "noch leer"));
+    t.members.forEach(m => {
+      const r = el("div", "m" + (m.online ? "" : " off")); r.append(m.name);
+      const x = el("button", null, "×"); x.title = m.name + " entfernen"; x.onclick = () => host("kick", { id:m.id }); r.appendChild(x);
+      c.appendChild(r);
+    });
+    tg.appendChild(c);
+  });
+  side.appendChild(tg);
+  side.appendChild(el("span", "lbl", "Spiel wählen"));
+  const gs = el("div", "games");
+
+  const s1 = el("div", "game"); s1.append(el("h3", null, "Schätz-Duell"), el("p", null, "Alle schätzen gleichzeitig am Handy. Wer am nächsten dran ist, punktet."));
+  s1.append(opt("Wertung", seg(["solo","team"], opts.sch.mode, m => m === "team" ? "Für das Team" : "Jeder für sich", m => opts.sch.mode = m)),
+            opt("Fragen", seg([5,10,15,20], opts.sch.rounds, n => n, n => opts.sch.rounds = n)),
+            opt("Zeit pro Frage", seg([30,60,90,0], opts.sch.time, n => n ? n + " s" : "ohne", n => opts.sch.time = n)));
+  const cats = el("div", "seg");
+  const allOn = !opts.sch.cats.length;
+  const ab = el("button", null, "Alle"); ab.setAttribute("aria-pressed", allOn); ab.onclick = () => { opts.sch.cats = []; saveOpts(); render(); }; cats.appendChild(ab);
+  V.schCats.forEach(c => { const b = el("button", null, c); b.setAttribute("aria-pressed", !allOn && opts.sch.cats.includes(c));
+    b.onclick = () => { const s = new Set(opts.sch.cats); s.has(c) ? s.delete(c) : s.add(c); opts.sch.cats = [...s]; saveOpts(); render(); }; cats.appendChild(b); });
+  s1.appendChild(opt("Kategorien", cats));
+  const g1 = el("button", "big", "Schätz-Duell starten"); g1.onclick = () => host("start", { game:"sch", opts:opts.sch }); s1.appendChild(g1);
+
+  const s2 = el("div", "game"); s2.append(el("h3", null, "Leopardy"), el("p", null, "Ein Team wählt ein Feld, dann buzzern alle am Handy. Wer zuerst drückt, antwortet."));
+  s2.append(opt("Antworten", seg(["tippen","rufen"], opts.leo.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.leo.input = m)),
+            el("p", null, opts.leo.input === "tippen" ? "Das Team tippt die Antwort am Handy ein, die Prüfung verzeiht Tippfehler." : "Das Team ruft die Antwort laut, du entscheidest am Host-Bildschirm mit Richtig oder Falsch."));
+  s2.append(opt("Brett", seg(["kurz","voll"], opts.leo.board, b => b === "kurz" ? "Kurz · 24 Felder" : "Voll · 48 Felder", b => opts.leo.board = b)));
+  const g2 = el("button", "big", "Leopardy starten"); g2.onclick = () => host("start", { game:"leo", opts:opts.leo }); s2.appendChild(g2);
+
+  const s3 = el("div", "game"); s3.append(el("h3", null, "Erklären & Pantomime"), el("p", null, "Das Team schickt jemanden vor. Nur diese Person sieht die Begriffe am Handy. Solange die Zeit läuft, kommt nach jedem erratenen Begriff sofort der nächste."));
+  s3.append(opt("Antworten", seg(["rufen","tippen"], opts.act.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.act.input = m)),
+            el("p", null, opts.act.input === "rufen" ? "Alle rufen durcheinander. Wer erklärt oder vorspielt, drückt „Richtig!“, erst dann kommt der nächste Begriff." : "Das ratende Team tippt die Lösung am Handy ein. Ist sie richtig, kommt automatisch der nächste Begriff."));
+  s3.append(opt("Zeit pro Begriff", seg([60,90,120], opts.act.time, n => n + " s", n => opts.act.time = n)),
+            opt("Ziel", seg([30,50,75,100], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)));
+  const g3 = el("button", "big", "Erklären & Pantomime starten"); g3.onclick = () => host("start", { game:"act", opts:opts.act }); s3.appendChild(g3);
+  gs.append(s1, s2, s3); side.appendChild(gs);
+  L.appendChild(side); st.appendChild(L);
+}
+
+/* ---------- Schätz-Duell ---------- */
+function schColor(p){ return V.mode === "team" ? TC(p.team) : PC[V.guesses.findIndex(x => x.id === p.id) % PC.length]; }
+function renderSch(st){
+  const Q = V.q;
+  const ey = el("p", "eyebrow"); ey.append(Q.cat + " · Frage "); ey.appendChild(el("b", null, (V.round+1) + " / " + V.total)); st.appendChild(ey);
+  st.appendChild(el("p", "hq", Q.text));
+  if (V.phase === "guess"){
+    if (V.endAt) st.append(countdown(V.endAt), timebar(V.endAt, V.time));
+    const chips = el("div", "chips");
+    V.guesses.forEach(p => { const c = el("span", "chip " + (p.submitted ? "done" : ""), p.name + (p.submitted ? " ✓" : " …")); c.style.setProperty("--c", schColor(p)); chips.appendChild(c); });
+    st.appendChild(chips);
+    const n = V.guesses.filter(p => !p.submitted).length;
+    const b = el("button", "btn", n ? "Jetzt auflösen (" + n + " fehlen)" : "Auflösen"); b.onclick = () => host("reveal");
+    st.appendChild(b);
+    return;
+  }
+  const a = V.answer.value;
+  const ans = el("p", "ans", Q.year ? String(a) : fmt(a) + " " + Q.unit); if (V.answer.note) ans.appendChild(el("small", null, V.answer.note));
+  st.appendChild(ans);
+  const done = V.guesses.filter(p => p.value != null);
+  if (done.length){ const tb = el("div", "tapebox"); tb.appendChild(tape(a, Q.year, done.map(p => ({ value:p.value, name:p.name, color:schColor(p) })))); st.appendChild(tb); }
+  const gl = el("div", "glist");
+  done.sort((x, y) => Math.abs(x.value - a) - Math.abs(y.value - a)).forEach(p => {
+    const g = el("div", "g" + (p.pts ? " win" : "")); g.style.setProperty("--c", schColor(p));
+    g.append(el("div", "w", p.name + (V.mode === "team" ? " · " + V.teams[p.team].name : "")), el("div", "v", Q.year ? String(p.value) : fmt(p.value)),
+             el("div", "o", pct(p.value, a) + " daneben" + (p.pts ? " · +" + p.pts + (p.hit ? " Volltreffer!" : "") : "")));
+    gl.appendChild(g);
+  });
+  st.appendChild(gl);
+  const best = V.closest.map(id => V.guesses.find(p => p.id === id)).filter(Boolean);
+  const vd = el("p", "verdict", !best.length ? "Keiner hat geschätzt" : best.map(p => p.name).join(" & ") + (best.length > 1 ? " sind gleich nah" : " holt den Punkt"));
+  if (best.length === 1) vd.style.color = schColor(best[0]);
+  st.appendChild(vd);
+  const nb = el("button", "big", V.round + 1 >= V.total ? "Zum Ergebnis" : "Nächste Frage"); nb.onclick = () => host("next"); st.appendChild(nb);
+}
+
+/* ---------- Leopardy ---------- */
+function renderLeo(st){
+  const c = V.cur, tn = i => V.teams[i].name;
+  if (V.phase === "board"){
+    const t = el("p", "eyebrow"); t.append("Am Zug: "); const b = el("b", null, tn(V.turn)); b.style.color = TC(V.turn); t.appendChild(b); t.append(" wählt am Handy ein Feld");
+    st.appendChild(t);
+    const bd = el("div", "board"); bd.style.gridTemplateColumns = `repeat(${V.board.cats.length}, minmax(0,1fr))`;
+    V.board.cats.forEach(n => bd.appendChild(el("div", "cat", n)));
+    V.board.rows.forEach(row => V.board.cats.forEach((n, ci) => {
+      const k = ci + "-" + row.lv, u = V.board.used[k];
+      const tile = el("button", "tile", row.value);
+      if (u !== undefined){ tile.disabled = true; if (u >= 0){ tile.classList.add("won"); tile.style.setProperty("--c", TC(u)); tile.textContent = tn(u); } }
+      else tile.onclick = () => host("pick", { ci, lv:row.lv });
+      bd.appendChild(tile);
+    }));
+    st.appendChild(bd);
+    return;
+  }
+  const ey = el("p", "eyebrow"); ey.append(c.cat + " · "); ey.appendChild(el("b", null, c.value)); st.appendChild(ey);
+  st.appendChild(el("p", "hq", c.q));
+  if (c.wrongs.length){
+    const w = el("div", "wrongs");
+    c.wrongs.forEach(x => { const s = el("span", "chip", tn(x.team) + ": „" + x.text + "“ ✗"); s.style.setProperty("--c", TC(x.team)); w.appendChild(s); });
+    st.appendChild(w);
+  }
+  if (V.phase === "buzz"){
+    st.appendChild(el("p", "verdict", c.wrongs.length ? "Andere Teams: jetzt buzzern!" : "Buzzer offen!"));
+    st.append(countdown(V.endAt), timebar(V.endAt, c.wrongs.length ? 20 : 35));
+    const ct = el("div", "ctrl");
+    if (c.canSwap){ const s = el("button", "btn", "Andere Frage"); s.onclick = () => host("swap"); ct.appendChild(s); }
+    const r = el("button", "btn", "Auflösen"); r.onclick = () => host("reveal"); ct.appendChild(r);
+    st.appendChild(ct);
+  }
+  if (V.phase === "answer"){
+    const v = el("p", "verdict"); const b = el("span", null, tn(c.buzzTeam)); b.style.color = TC(c.buzzTeam);
+    v.append(b, " hat gebuzzert"); st.appendChild(v);
+    if (V.input === "rufen"){
+      st.appendChild(el("p", "hq", "Antwort laut sagen!"));
+      st.append(countdown(V.endAt), timebar(V.endAt, c.answerSec));
+      const ct = el("div", "ctrl");
+      const y = el("button", "big", "Richtig"); y.style.setProperty("--c", "var(--ok)"); y.onclick = () => host("judge", { ok:true });
+      const n = el("button", "big", "Falsch"); n.style.setProperty("--c", "var(--bad)"); n.onclick = () => host("judge", { ok:false });
+      const pk = el("button", "btn", "Lösung gedrückt halten"); const sp = el("span", "muted");
+      const on = e => { e.preventDefault(); sp.textContent = c.peek; }, off = () => { sp.textContent = ""; };
+      pk.addEventListener("pointerdown", on); ["pointerup","pointerleave","pointercancel"].forEach(ev => pk.addEventListener(ev, off));
+      ct.append(y, n, pk, sp); st.appendChild(ct);
+    } else {
+      st.appendChild(el("p", "muted", c.buzzName + " tippt die Antwort ein …"));
+      st.append(countdown(V.endAt), timebar(V.endAt, c.answerSec));
+    }
+  }
+  if (V.phase === "result"){
+    const v = el("p", "verdict", c.ok ? "Richtig! +" + c.value + " für " + tn(c.winner) : "Keiner wusste es");
+    v.style.color = c.ok ? TC(c.winner) : "var(--muted)"; st.appendChild(v);
+    const a = el("p", "ans", c.answer); if (c.note) a.appendChild(el("small", null, c.note)); st.appendChild(a);
+    const ct = el("div", "ctrl");
+    const nx = el("button", "big", "Weiter "); nx.appendChild(countdown(V.endAt)); nx.onclick = () => host("next"); ct.appendChild(nx);
+    if (c.ok){ const o = el("button", "btn", "Doch falsch werten"); o.onclick = () => host("override", { ok:false }); ct.appendChild(o); }
+    else if (c.wrongs.some(w => !w.timeout)){ const o = el("button", "btn", "Letzte Antwort doch richtig"); o.onclick = () => host("override", { ok:true }); ct.appendChild(o); }
+    st.appendChild(ct);
+  }
+}
+
+/* ---------- Erklären & Pantomime ---------- */
+function renderAct(st){
+  const tn = V.teams[V.turn].name, mc = V.mode === "say" ? "var(--say)" : "var(--mime)", mname = V.mode === "say" ? "Erklären" : "Pantomime";
+  st.style.setProperty("--mc", mc);
+  const ey = el("p", "eyebrow"); const b = el("b", null, tn); b.style.color = TC(V.turn); ey.append(b, " ist dran · Ziel " + V.goal + " Punkte"); st.appendChild(ey);
+  st.appendChild(el("p", "mode", mname));
+  if (V.all) st.appendChild(el("p", "verdict", "Alle Teams dürfen raten!"));
+  if (V.phase === "who"){
+    st.appendChild(el("p", "hq", "Wer aus " + tn + " macht es? Tippt am Handy auf „Ich mach's!“"));
+    if (V.suggestName) st.appendChild(el("p", "muted", "Vorschlag: " + V.suggestName));
+    return;
+  }
+  const who = el("p", "hq"); const nb = el("b", null, V.explainerName); nb.style.color = TC(V.turn);
+  if (V.phase === "choose"){ who.append(nb, " wählt die Schwierigkeit …"); st.appendChild(who); }
+  if (V.phase === "ready"){ who.append(nb, " schaut sich den Begriff an …"); st.appendChild(who); st.appendChild(el("p", "muted", V.pts + " Punkte · Alle anderen: nicht aufs Handy von " + V.explainerName + " schauen!")); }
+  if (V.phase === "who" || V.phase === "choose" || V.phase === "ready"){
+    const sk = el("button", "btn", "Andere Person wählen"); sk.onclick = () => host("skipExp"); st.appendChild(sk);
+  }
+  if (V.phase === "run"){
+    who.append(nb, V.mode === "say" ? " erklärt" : " spielt vor", " · " + V.pts + " Punkte pro Begriff"); st.appendChild(who);
+    st.append(countdown(V.endAt), timebar(V.endAt, V.time));
+    st.appendChild(el("p", "verdict", (V.all ? "Alle raten laut!" : tn + " rät laut!")));
+    st.appendChild(el("p", "huge", V.guessed + (V.guessed === 1 ? " Begriff" : " Begriffe")));
+    if (V.input === "tippen"){
+      st.appendChild(el("p", "muted", "Lösung am Handy eintippen. Richtig = sofort der nächste Begriff."));
+      const fd = el("div", "chips");
+      V.feed.forEach(x => { const c = el("span", "chip" + (x.ok ? " done" : ""), x.name + ": " + x.text + (x.ok ? " ✓" : "")); c.style.setProperty("--c", TC(x.team)); fd.appendChild(c); });
+      st.appendChild(fd);
+    }
+    const ct = el("div", "ctrl");
+    const f = el("button", "btn", "Runde beenden"); f.onclick = () => host("actEnd"); ct.appendChild(f);
+    st.appendChild(ct);
+  }
+  if (V.phase === "result"){
+    const got = V.words.filter(x => x.team != null);
+    const sum = {}; got.forEach(x => sum[x.team] = (sum[x.team] || 0) + V.pts);
+    const v = el("p", "verdict", got.length ? Object.entries(sum).map(([t, p]) => "+" + p + " für " + V.teams[t].name).join(" · ") : "Kein Begriff erraten");
+    if (Object.keys(sum).length === 1) v.style.color = TC(+Object.keys(sum)[0]); st.appendChild(v);
+    const ch = el("div", "chips");
+    V.words.forEach(x => { const c = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " ✓" : x.open ? " (Zeit um)" : " (übersprungen)"));
+      c.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); ch.appendChild(c); });
+    st.appendChild(ch);
+    const n = el("button", "big", "Nächstes Team"); n.onclick = () => host("next"); st.appendChild(n);
+  }
+}
+
+/* ---------- Ende ---------- */
+function renderEnd(st){
+  const r = V.ranking || [];
+  st.appendChild(el("p", "eyebrow", "Spielende"));
+  const top = r.filter(x => x.score === r[0]?.score);
+  st.appendChild(el("p", "huge", top.length > 1 ? "Unentschieden!" : (r[0]?.name || "–") + " gewinnt!"));
+  const p = el("div", "podium");
+  r.forEach((x, i) => { const d = el("div"); d.style.setProperty("--c", V.game === "sch" && V.mode === "solo" ? PC[i % PC.length] : TC(x.team));
+    d.append(el("span", null, (i+1) + ". " + x.name), el("span", "num", x.score + " P")); p.appendChild(d); });
+  st.appendChild(p);
+  const b = el("button", "big", "Zurück zur Lobby"); b.onclick = () => host("lobby"); st.appendChild(b);
+}
+
+setInterval(() => fetch("/ping").catch(() => {}), 4 * 60 * 1000);   // Gratis-Hoster schlafen nach 15 Min. ohne Anfragen ein
+boot().catch(e => { $("stage").innerHTML = ""; $("stage").appendChild(el("p", "err", "Server nicht erreichbar: " + e.message)); });
+</script>
+</body>
+</html>
