@@ -116,6 +116,7 @@ let V = null, H = store.get("spieleabend-host"), sse = null, confirmEnd = false;
 const opts = store.get("spieleabend-opts") || { sch:{ mode:"solo", rounds:10, time:60, cats:[] }, leo:{ board:"kurz", input:"tippen" }, act:{ time:90, goal:50, input:"rufen" } };
 opts.leo.input = opts.leo.input || "tippen"; opts.act.input = opts.act.input || "rufen";
 if (![30,50,75,100].includes(opts.act.goal)) opts.act.goal = 50;
+if (opts.act.all !== "aus") opts.act.all = "an";
 const saveOpts = () => store.set("spieleabend-opts", opts);
 const host = (what, data) => post("host", { room:H.room, hostToken:H.hostToken, do:what, ...(data||{}) }).catch(e => flash(e.message));
 
@@ -254,7 +255,9 @@ function renderLobby(st){
   s3.append(opt("Antworten", seg(["rufen","tippen"], opts.act.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.act.input = m)),
             el("p", null, opts.act.input === "rufen" ? "Alle rufen durcheinander. Wer erklärt oder vorspielt, drückt „Richtig!“, erst dann kommt der nächste Begriff." : "Das ratende Team tippt die Lösung am Handy ein. Ist sie richtig, kommt automatisch der nächste Begriff."));
   s3.append(opt("Zeit pro Begriff", seg([60,90,120], opts.act.time, n => n + " s", n => opts.act.time = n)),
-            opt("Ziel", seg([30,50,75,100], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)));
+            opt("Ziel", seg([30,50,75,100], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)),
+            opt("Alle Teams raten", seg(["an","aus"], opts.act.all, m => m === "an" ? "An" : "Aus", m => opts.act.all = m)));
+  s3.append(el("p", null, opts.act.all === "an" ? "Ab und zu (etwa jede 7. Runde) dürfen alle Teams mitraten, Punkte bekommt, wer es zuerst errät." : "Es rät immer nur das Team, das gerade dran ist."));
   const g3 = el("button", "big", "Erklären & Pantomime starten"); g3.onclick = () => host("start", { game:"act", opts:opts.act }); s3.appendChild(g3);
   gs.append(s1, s2, s3); side.appendChild(gs);
   L.appendChild(side); st.appendChild(L);

@@ -185,14 +185,14 @@ function leoSwap(r){
 /* ---------------- Activity ---------------- */
 function actStart(r, o){
   r.g = { kind:"act", input:o.input === "tippen" ? "tippen" : "rufen", feed:[], time:[60,90,120].includes(+o.time) ? +o.time : 90, goal:[30,50,75,100].includes(+o.goal) ? +o.goal : 50,
-          turn:pickRand(activeTeams(r)), expIdx:Array(r.teamCount).fill(0), teamScores:Array(r.teamCount).fill(0) };
+          allTeams:o.all !== "aus", turn:pickRand(activeTeams(r)), expIdx:Array(r.teamCount).fill(0), teamScores:Array(r.teamCount).fill(0) };
   actTurn(r);
 }
 function actTurn(r){
   const g = r.g, ms = membersOf(r, g.turn), online = ms.filter(p => p.conns > 0), list = online.length ? online : ms;
   g.suggest = list.length ? list[g.expIdx[g.turn] % list.length].id : null;   // Vorschlag, das Team entscheidet selbst
   g.explainer = null;
-  g.mode = Math.random() < 0.5 ? "say" : "mime"; g.all = Math.random() < 0.15;
+  g.mode = Math.random() < 0.5 ? "say" : "mime"; g.all = g.allTeams && Math.random() < 0.15;   // vom Host abschaltbar
   g.phase = "who"; g.pts = null; g.word = null; g.words = []; g.feed = []; g.endAt = null; clearTimer(r);
 }
 function actDraw(r, pts, exclude){
