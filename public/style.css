@@ -1,11 +1,11 @@
-/* Spieleabend – Studio-Kobalt: Gameshow-Bühne für Host-Bildschirm und Handys
+/* Spieleabend – Bühnen-Aubergine: Gameshow-Bühne für Host-Bildschirm und Handys
    Formen: Flächen 18px, Knöpfe/Felder 14px, Chips voll rund.
    Markenzeichen: dicke Konsolen-Knöpfe mit harter Unterkante, die beim Drücken einsinken. */
 :root{
-  --bg:#0c1876; --bg-hi:#1f37c2; --panel:#13238f; --raise:#1d31b0; --line:#3149d2; --ink:#0a114f;
-  --fg:#f5f6ff; --muted:#b4bff5; --gold:#ffd23a; --paper:#f5f3ea; --ok:#43e5a6; --bad:#ff5a5f;
-  --t0:#ff6f59; --t1:#43e5a6; --t2:#ff8fd6; --t3:#c6f04a;
-  --say:#ffd23a; --mime:#ff6f59;
+  --bg:#2a0f2e; --bg-hi:#5e2266; --panel:#3d1742; --raise:#4f1f56; --line:#6e3176; --ink:#1a0820;
+  --fg:#fbf3fb; --muted:#dcbfe0; --gold:#ffc53d; --paper:#f5f0e6; --ok:#43e5a6; --bad:#ff5a5f;
+  --t0:#ff6f59; --t1:#43e5a6; --t2:#6fd3ff; --t3:#c6f04a;
+  --say:#ffc53d; --mime:#ff6f59;
   --display:"Unbounded","Arial Black",system-ui,sans-serif;
   --body:"Figtree","Segoe UI",system-ui,sans-serif;
   --r-panel:18px; --r-ctl:14px;
@@ -31,10 +31,10 @@ button:disabled{opacity:.4;cursor:default}
 .btn:active:not(:disabled){transform:translateY(3px);box-shadow:0 0 0 var(--ink)}
 .big{--c:var(--gold);font:800 17px/1.1 var(--display);letter-spacing:-.01em;padding:16px 26px;border-radius:var(--r-ctl);border:0;
   background:var(--c);color:var(--ink);
-  box-shadow:0 6px 0 color-mix(in srgb,var(--c) 45%,var(--ink)),0 12px 24px rgb(5 10 60 / .45),inset 0 2px 0 rgb(255 255 255 / .45);
+  box-shadow:0 6px 0 color-mix(in srgb,var(--c) 45%,var(--ink)),0 12px 24px rgb(20 3 22 / .45),inset 0 2px 0 rgb(255 255 255 / .45);
   transition:transform .12s var(--press),box-shadow .12s,filter .15s}
 .big:hover:not(:disabled){filter:brightness(1.06)}
-.big:active:not(:disabled){transform:translateY(6px);box-shadow:0 0 0 color-mix(in srgb,var(--c) 45%,var(--ink)),0 4px 10px rgb(5 10 60 / .4),inset 0 2px 0 rgb(255 255 255 / .45)}
+.big:active:not(:disabled){transform:translateY(6px);box-shadow:0 0 0 color-mix(in srgb,var(--c) 45%,var(--ink)),0 4px 10px rgb(20 3 22 / .4),inset 0 2px 0 rgb(255 255 255 / .45)}
 
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .center{justify-content:center;text-align:center}
@@ -66,7 +66,7 @@ button:disabled{opacity:.4;cursor:default}
 /* Maßband */
 .tapewrap{padding:36px 8px 34px}
 .tape{position:relative;height:30px;border-radius:8px;background:var(--gold);box-shadow:0 4px 0 color-mix(in srgb,var(--gold) 45%,var(--ink));
-  background-image:repeating-linear-gradient(90deg,rgb(10 17 79 / .55) 0 1px,transparent 1px 10%),repeating-linear-gradient(90deg,rgb(10 17 79 / .28) 0 1px,transparent 1px 2%);
+  background-image:repeating-linear-gradient(90deg,rgb(26 8 32 / .55) 0 1px,transparent 1px 10%),repeating-linear-gradient(90deg,rgb(26 8 32 / .28) 0 1px,transparent 1px 2%);
   background-size:100% 60%,100% 30%;background-repeat:no-repeat}
 .mk{position:absolute;top:-8px;bottom:-8px;width:5px;margin-left:-2.5px;border-radius:3px;background:var(--c);box-shadow:0 0 0 2px var(--ink)}
 .mk span{position:absolute;left:50%;transform:translateX(-50%);font:800 13px var(--body);white-space:nowrap;color:var(--c)}

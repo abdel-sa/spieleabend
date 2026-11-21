@@ -15,7 +15,7 @@ const LEO = load("leopardy.json");                // {pool:[{name, lv:[[[q,a,not
 const ACT = load("activity.json");                // {3:[], 4:[], 5:[]}
 const SCH_CATS = [...new Set(SCH.map(q => q[3]))];
 const LEO_VALUES = [100,200,300,400,500,600,700,800];
-const TEAM_NAMES = ["Team Rot","Team Grün","Team Pink","Team Lime"];
+const TEAM_NAMES = ["Team Rot","Team Grün","Team Blau","Team Lime"];
 
 const rooms = new Map();
 const rid = n => crypto.randomBytes(n).toString("hex");

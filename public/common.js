@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 function el(tag, cls, txt){ const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
 const TC = i => `var(--t${i})`;
-const PC = ["#ff6f59","#43e5a6","#ff8fd6","#c6f04a","#ffd23a","#7fe9ff","#ffa94d","#d0b3ff"];
+const PC = ["#ff6f59","#43e5a6","#6fd3ff","#c6f04a","#ffc53d","#ff8fd6","#ffa94d","#b9f2e8"];
 const fmt = n => Number(n).toLocaleString("de-AT", { maximumFractionDigits:3 });
 const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } },
                 set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} },
