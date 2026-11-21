@@ -21,6 +21,7 @@ body{padding:18px 28px 24px;min-height:100dvh;display:flex;flex-direction:column
 .conn{font-size:13px;font-weight:700;color:var(--muted)}
 .conn.off{color:var(--fg);background:var(--bad);padding:4px 10px;border-radius:999px}
 #topBtns{display:flex;gap:8px;align-items:center}
+.btn.music[aria-pressed="false"]{color:var(--muted);border-style:dashed}
 
 .stage{flex:1;display:flex;flex-direction:column;gap:22px;align-items:center;justify-content:center;text-align:center;min-height:0}
 .stage.top{justify-content:flex-start}
@@ -142,6 +143,21 @@ function qrImg(text, cell){
 }
 function flash(msg){ const p = el("p", "err", msg); $("stage").prepend(p); setTimeout(() => p.remove(), 4000); }
 
+/* Hintergrundmusik: nur hier am Host, in Dauerschleife. Browser erlauben Ton erst nach dem ersten Klick. */
+const music = new Audio("/music.mp3"); music.loop = true; music.volume = 0.35; music.preload = "none";
+let musicOn = store.get("spieleabend-music") !== false;
+function setMusic(on){
+  musicOn = on; store.set("spieleabend-music", on);
+  if (on) music.play().catch(() => {}); else music.pause();
+  if (V) render();
+}
+if (musicOn){
+  music.play().catch(() => {
+    const go = () => { if (musicOn) music.play().catch(() => {}); };
+    document.addEventListener("pointerdown", go, { once:true }); document.addEventListener("keydown", go, { once:true });
+  });
+}
+
 async function boot(){
   if (!H){ H = await post("create", {}); store.set("spieleabend-host", H); }
   sse = connect({ room:H.room, host:H.hostToken }, v => {
@@ -173,6 +189,8 @@ function _render(){
       w.append(y, n); tb.appendChild(w);
     }
   }
+  const mb = el("button", "btn music", musicOn ? "Musik an" : "Musik aus"); mb.setAttribute("aria-pressed", musicOn);
+  mb.title = "Hintergrundmusik ein- oder ausschalten"; mb.onclick = () => setMusic(!musicOn); tb.appendChild(mb);
   const fs = el("button", "btn", "Vollbild"); fs.onclick = () => document.documentElement.requestFullscreen?.().catch(() => {}); tb.appendChild(fs);
 
   const st = $("stage"); st.innerHTML = ""; st.className = "stage";

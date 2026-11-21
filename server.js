@@ -311,6 +311,21 @@ function body(req){
 function json(res, code, obj){ res.writeHead(code, { "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store" }); res.end(JSON.stringify(obj)); }
 const FILES = { "/":"player.html", "/host":"host.html", "/style.css":"style.css", "/common.js":"common.js", "/qrcode.js":"qrcode.js" };
 const TYPES = { ".html":"text/html; charset=utf-8", ".css":"text/css; charset=utf-8", ".js":"text/javascript; charset=utf-8" };
+// Hintergrundmusik für den Host-Bildschirm: mit Range-Anfragen, damit der Browser streamen und loopen kann
+const MUSIC = path.join(ROOT, "public", "music.mp3");
+function sendMusic(req, res){
+  fs.stat(MUSIC, (err, st) => {
+    if (err){ res.writeHead(404); return res.end(); }
+    const head = { "Content-Type":"audio/mpeg", "Accept-Ranges":"bytes", "Cache-Control":"public, max-age=86400" };
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+    if (!m){ res.writeHead(200, { ...head, "Content-Length":st.size }); return fs.createReadStream(MUSIC).pipe(res); }
+    let start = m[1] === "" ? Math.max(0, st.size - Number(m[2])) : Number(m[1]);
+    let end = m[1] !== "" && m[2] !== "" ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;
+    if (start > end || start >= st.size){ res.writeHead(416, { "Content-Range":"bytes */" + st.size }); return res.end(); }
+    res.writeHead(206, { ...head, "Content-Range":`bytes ${start}-${end}/${st.size}`, "Content-Length":end - start + 1 });
+    fs.createReadStream(MUSIC, { start, end }).pipe(res);
+  });
+}
 const cleanName = s => String(s || "").replace(/\s+/g, " ").trim().slice(0, 20);
 
 const server = http.createServer(async (req, res) => {
@@ -321,6 +336,7 @@ const server = http.createServer(async (req, res) => {
     return fs.createReadStream(f).pipe(res);
   }
   if (url.pathname === "/ping"){ res.writeHead(204); return res.end(); }   // hält Gratis-Hoster wach
+  if (req.method === "GET" && url.pathname === "/music.mp3") return sendMusic(req, res);
   if (req.method === "GET" && url.pathname === "/events"){
     const r = rooms.get((url.searchParams.get("room") || "").toUpperCase());
     if (!r){ res.writeHead(404); return res.end(); }
