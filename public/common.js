@@ -9,13 +9,14 @@ const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catc
                 del(k){ try { localStorage.removeItem(k); } catch(e){} } };
 
 let clockOffset = 0;
-function connect(qs, onView, onStatus){
+function connect(qs, onView, onStatus, onEvent){
   let es;
   const open = () => {
     if (es) es.close();
     es = new EventSource("/events?" + new URLSearchParams(qs));
     es.onmessage = e => { const v = JSON.parse(e.data); clockOffset = v.now - Date.now(); onStatus && onStatus(true); onView(v); };
     es.onerror = () => { onStatus && onStatus(false); };
+    ["draw", "drawsync"].forEach(t => es.addEventListener(t, e => onEvent && onEvent(t, JSON.parse(e.data))));
   };
   open();
   return { reopen:open, close(){ es && es.close(); } };
@@ -75,4 +76,42 @@ function tape(answer, year, marks){
   put(answer, "var(--fg)", "Lösung", "truth dn", 0);
   wrap.style.paddingTop = (36 + maxLv * 20) + "px";
   wrap.appendChild(t); return wrap;
+}
+
+/* Zeichenfläche (4:3). Koordinaten sind 0..1, damit Handy und Fernseher dasselbe Bild zeigen.
+   Das Element bleibt über Neuzeichnungen hinweg erhalten, die Striche liegen im Speicher. */
+const INK = ["#1a0820", "#e8432f", "#2f6fe8", "#1f9d5c", "#f5f0e6"];   // letzte Farbe = Radierer (Papier)
+const PEN = [0.006, 0.013, 0.045];
+function makeBoard(){
+  const cv = el("canvas", "board-canvas"), ctx = cv.getContext("2d");
+  const B = { cv, ctx, n:-1, strokes:[] };
+  const lw = s => PEN[s.w] * cv.width;
+  const seg = (s, from) => {
+    const P = s.p, W = cv.width, H = cv.height;
+    ctx.strokeStyle = INK[s.c]; ctx.fillStyle = INK[s.c]; ctx.lineWidth = lw(s); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (P.length === 1 || (from === 0 && P.length === 1)){ ctx.beginPath(); ctx.arc(P[0][0]*W, P[0][1]*H, lw(s)/2, 0, Math.PI*2); ctx.fill(); return; }
+    ctx.beginPath(); const a = Math.max(0, from - 1); ctx.moveTo(P[a][0]*W, P[a][1]*H);
+    for (let i = a + 1; i < P.length; i++) ctx.lineTo(P[i][0]*W, P[i][1]*H);
+    ctx.stroke();
+  };
+  B.redraw = () => { ctx.fillStyle = INK[4]; ctx.fillRect(0, 0, cv.width, cv.height); B.strokes.forEach(s => seg(s, 0)); };
+  B.fit = () => {
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(r.width * dpr), h = Math.round(r.width * 0.75 * dpr);
+    if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    B.redraw();
+  };
+  B.reset = n => { B.n = n; B.strokes = []; B.redraw(); };
+  B.sync = d => { B.n = d.n; B.strokes = d.strokes.map(s => ({ ...s, p:s.p.slice() })); B.redraw(); };
+  B.add = d => {
+    if (d.n !== B.n) B.reset(d.n);
+    for (const x of d.segs){
+      let s = B.strokes.find(q => q.id === x.id);
+      if (!s){ s = { id:x.id, c:x.c, w:x.w, p:[] }; B.strokes.push(s); }
+      const from = s.p.length; s.p.push(...x.p); seg(s, from);
+    }
+  };
+  B.seg = seg;
+  window.addEventListener("resize", () => { if (cv.isConnected) B.fit(); });
+  return B;
 }

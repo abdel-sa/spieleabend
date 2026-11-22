@@ -12,7 +12,7 @@ const ROOT = __dirname;
 const load = f => JSON.parse(fs.readFileSync(path.join(ROOT, "data", f), "utf8"));
 const SCH = load("schaetz.json");                 // [frage, antwort, einheit, kategorie, zusatz]
 const LEO = load("leopardy.json");                // {pool:[{name, lv:[[[q,a,note]]]}], alt:{}}
-const ACT = load("activity.json");                // {3:[], 4:[], 5:[]}
+const ACT = load("begriffe.json");                 // {say|mime|draw: {1..5: []}}
 const SCH_CATS = [...new Set(SCH.map(q => q[3]))];
 const LEO_VALUES = [100,200,300,400,500,600,700,800];
 const TEAM_NAMES = ["Team Rot","Team Grün","Team Blau","Team Lime"];
@@ -182,35 +182,43 @@ function leoSwap(r){
   g.picks[k] = pickRand(opts); leoBuzzOpen(r, BUZZ_MS);
 }
 
-/* ---------------- Activity ---------------- */
+/* ---------------- Activity: Erklären, Pantomime, Zeichnen ---------------- */
+// Stufen 1–5. Jeder Treffer hebt die Stufe um 1, Punkte = Stufe + 1. Überspringen bleibt auf der Stufe.
+const ACT_MODES = ["say", "mime", "draw"];
+const actPts = lv => lv + 1;
 function actStart(r, o){
+  const modes = Array.isArray(o.modes) ? ACT_MODES.filter(m => o.modes.includes(m)) : [];
   r.g = { kind:"act", input:o.input === "tippen" ? "tippen" : "rufen", feed:[], time:[60,90,120].includes(+o.time) ? +o.time : 90, goal:[30,50,75,100].includes(+o.goal) ? +o.goal : 50,
-          allTeams:o.all !== "aus", turn:pickRand(activeTeams(r)), expIdx:Array(r.teamCount).fill(0), teamScores:Array(r.teamCount).fill(0) };
+          modes: modes.length ? modes : ACT_MODES.slice(), allTeams:o.all !== "aus", turn:pickRand(activeTeams(r)), expIdx:Array(r.teamCount).fill(0), teamScores:Array(r.teamCount).fill(0) };
   actTurn(r);
 }
 function actTurn(r){
   const g = r.g, ms = membersOf(r, g.turn), online = ms.filter(p => p.conns > 0), list = online.length ? online : ms;
   g.suggest = list.length ? list[g.expIdx[g.turn] % list.length].id : null;   // Vorschlag, das Team entscheidet selbst
   g.explainer = null;
-  g.mode = Math.random() < 0.5 ? "say" : "mime"; g.all = g.allTeams && Math.random() < 0.15;   // vom Host abschaltbar
-  g.phase = "who"; g.pts = null; g.word = null; g.words = []; g.feed = []; g.endAt = null; clearTimer(r);
+  g.mode = pickRand(g.modes); g.all = g.allTeams && Math.random() < 0.15;   // vom Host abschaltbar
+  g.phase = "who"; g.level = null; g.word = null; g.words = []; g.feed = []; g.endAt = null; actClearDrawing(g); clearTimer(r);
 }
-function actDraw(r, pts, exclude){
-  const list = ACT[pts]; let opts = list.map((w,i) => i).filter(i => i !== exclude && !r.seen.act.has(pts+"-"+i));
-  if (!opts.length){ list.forEach((w,i) => r.seen.act.delete(pts+"-"+i)); opts = list.map((w,i) => i).filter(i => i !== exclude); }
-  const i = pickRand(opts); r.seen.act.add(pts+"-"+i); return i;
+function actDraw(r, exclude){
+  const g = r.g, list = ACT[g.mode][g.level], key = w => g.mode + "|" + w;
+  let opts = list.filter(w => w !== exclude && !r.seen.act.has(key(w)));
+  if (!opts.length){ list.forEach(w => r.seen.act.delete(key(w))); opts = list.filter(w => w !== exclude); }
+  const w = pickRand(opts); r.seen.act.add(key(w)); return w;
 }
-// Ein Begriff erraten (team) oder übersprungen (null): Punkte gutschreiben und sofort der nächste Begriff
+function actNewWord(r, exclude){ const g = r.g; g.word = actDraw(r, exclude); actClearDrawing(g); }
+function actClearDrawing(g){ g.drawN = (g.drawN || 0) + 1; g.strokes = []; g.drawPts = 0; }
+// Ein Begriff erraten (team) oder übersprungen (null): Punkte gutschreiben, Stufe hoch, sofort der nächste Begriff
 function actMark(r, team){
   const g = r.g; if (g.phase !== "run") return;
-  g.words.push({ w:ACT[g.pts][g.word], team });
-  if (team != null) g.teamScores[team] += g.pts;
-  g.word = actDraw(r, g.pts, g.word);
+  const pts = team != null ? actPts(g.level) : 0;
+  g.words.push({ w:g.word, team, pts, lv:g.level });
+  if (team != null){ g.teamScores[team] += pts; g.level = Math.min(5, g.level + 1); }
+  actNewWord(r, g.word);
 }
 function actEnd(r){
   const g = r.g; if (g.phase !== "run") return;
   clearTimer(r);
-  g.words.push({ w:ACT[g.pts][g.word], team:null, open:true });
+  g.words.push({ w:g.word, team:null, pts:0, lv:g.level, open:true });
   g.phase = "result"; g.endAt = null;
 }
 function actNext(r){
@@ -219,6 +227,33 @@ function actNext(r){
   g.expIdx[g.turn]++;
   const at = activeTeams(r); g.turn = at[(at.indexOf(g.turn) + 1) % at.length] ?? at[0];
   actTurn(r);
+}
+// Zeichnen: Striche kommen in kleinen Stücken vom Handy und gehen direkt an Host-Bildschirm und Zuschauer-Handys
+const DRAW_MAX_PTS = 40000;
+function actDrawIn(r, segs){
+  const g = r.g, out = [];
+  for (const s of (Array.isArray(segs) ? segs : []).slice(0, 40)){
+    const id = String(s && s.id || "").slice(0, 12); if (!id) continue;
+    const pts = (Array.isArray(s.p) ? s.p : []).slice(0, 400)
+      .filter(q => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1]))
+      .map(q => [Math.round(Math.min(1, Math.max(0, q[0])) * 1000) / 1000, Math.round(Math.min(1, Math.max(0, q[1])) * 1000) / 1000]);
+    if (!pts.length || g.drawPts + pts.length > DRAW_MAX_PTS) continue;
+    let st = g.strokes.find(x => x.id === id);
+    if (!st){ st = { id, c:Math.min(4, Math.max(0, s.c | 0)), w:Math.min(2, Math.max(0, s.w | 0)), p:[] }; g.strokes.push(st); }
+    st.p.push(...pts); g.drawPts += pts.length;
+    out.push({ id, c:st.c, w:st.w, p:pts });
+  }
+  if (out.length) drawEvent(r, "draw", { n:g.drawN, segs:out });
+}
+function drawWatchers(r){ return [...r.clients].filter(c => c.host); }   // das Bild zeigt der Fernseher
+function drawEvent(r, type, data){
+  const msg = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const c of drawWatchers(r)) c.res.write(msg);
+}
+function drawSync(r, only){
+  const g = r.g; if (!g || g.kind !== "act") return;
+  const msg = `event: drawsync\ndata: ${JSON.stringify({ n:g.drawN, strokes:g.strokes })}\n\n`;
+  if (only) only.res.write(msg); else for (const c of drawWatchers(r)) c.res.write(msg);
 }
 
 /* ---------------- Spielende ---------------- */
@@ -278,10 +313,12 @@ function view(r, me, host){
   }
   if (g.kind === "act"){
     const isExp = me && me.id === g.explainer;
+    // Begriff sehen: wer dran ist, und zum Mitfiebern alle aus Teams, die gerade nicht raten
+    const watch = !!me && !isExp && !g.all && me.team !== g.turn && (g.phase === "ready" || g.phase === "run");
     Object.assign(v, { turn:g.turn, explainer:g.explainer, explainerName:g.explainer ? nameOf(g.explainer) : null,
       suggest:g.suggest, suggestName:g.suggest ? nameOf(g.suggest) : null,
-      mode:g.mode, all:g.all, pts:g.pts, goal:g.goal, time:g.time,
-      word: g.word != null && isExp && g.phase !== "result" ? ACT[g.pts][g.word] : null, isExplainer:!!isExp,
+      mode:g.mode, modes:g.modes, all:g.all, level:g.level, pts:g.level ? actPts(g.level) : null, goal:g.goal, time:g.time, drawN:g.drawN,
+      word: g.word != null && g.phase !== "result" && (isExp || watch) ? g.word : null, isExplainer:!!isExp, watching:watch,
       guessed: g.words.filter(x => x.team != null).length, input:g.input, feed:g.feed.slice(-8),
       canType: !!me && g.input === "tippen" && g.phase === "run" && !isExp && (g.all || me.team === g.turn),
       words: g.phase === "result" ? g.words : null });
@@ -348,6 +385,7 @@ const server = http.createServer(async (req, res) => {
     r.clients.add(c);
     const p = r.players.find(x => x.token === token); if (p) p.conns++;
     broadcast(r);
+    if (r.g && r.g.kind === "act" && r.g.strokes && r.g.strokes.length) drawSync(r, c);
     req.on("close", () => {
       r.clients.delete(c);
       const p2 = r.players.find(x => x.token === token); if (p2) p2.conns = Math.max(0, p2.conns - 1);
@@ -395,7 +433,7 @@ const server = http.createServer(async (req, res) => {
       case "swap":    if (k === "leo") leoSwap(r); break;
       case "judge":   if (k === "leo" && g.input === "rufen" && g.phase === "answer") leoResolve(r, !!b.ok, b.ok ? "laut gerufen" : "laut gerufen, falsch"); break;
       case "override":if (k === "leo") leoOverride(r, !!b.ok); break;
-      case "skipExp": if (k === "act" && g.phase !== "result" && g.phase !== "run"){ g.explainer = null; g.pts = null; g.word = null; g.phase = "who"; } break;
+      case "skipExp": if (k === "act" && g.phase !== "result" && g.phase !== "run"){ g.explainer = null; g.level = null; g.word = null; g.phase = "who"; } break;
       case "actGot":  if (k === "act") actMark(r, b.team == null ? null : +b.team); break;
       case "actEnd":  if (k === "act") actEnd(r); break;
       case "score":   if (g && g.teamScores && g.teamScores[b.team] != null) g.teamScores[b.team] += +b.delta || 0; break;
@@ -417,16 +455,22 @@ const server = http.createServer(async (req, res) => {
       case "buzz":   if (k === "leo") leoBuzz(r, p); break;
       case "answer": if (k === "leo") leoAnswer(r, p, String(b.text || "").slice(0, 120)); break;
       case "claim":  if (k === "act" && g.phase === "who" && p.team === g.turn){ g.explainer = p.id; g.phase = "choose"; } break;
-      case "unclaim":if (k === "act" && (g.phase === "choose" || g.phase === "ready") && p.id === g.explainer){ g.explainer = null; g.pts = null; g.word = null; g.phase = "who"; } break;
-      case "diff":   if (k === "act" && g.phase === "choose" && p.id === g.explainer && [3,4,5].includes(+b.pts)){ g.pts = +b.pts; g.word = actDraw(r, g.pts); g.phase = "ready"; } break;
-      case "swapWord": if (k === "act" && g.phase === "ready" && p.id === g.explainer) g.word = actDraw(r, g.pts, g.word); break;
+      case "unclaim":if (k === "act" && (g.phase === "choose" || g.phase === "ready") && p.id === g.explainer){ g.explainer = null; g.level = null; g.word = null; g.phase = "who"; } break;
+      case "diff":   if (k === "act" && g.phase === "choose" && p.id === g.explainer && [1,2,3].includes(+b.level)){ g.level = +b.level; actNewWord(r); g.phase = "ready"; } break;
+      case "swapWord": if (k === "act" && g.phase === "ready" && p.id === g.explainer) actNewWord(r, g.word); break;
+      case "skip":   if (k === "act" && g.phase === "run" && p.id === g.explainer) actMark(r, null); break;
+      case "draw":
+        if (k === "act" && g.phase === "run" && g.mode === "draw" && p.id === g.explainer && +b.n === g.drawN) actDrawIn(r, b.segs);
+        return json(res, 200, { ok:true });   // kein volles Update, nur der Strich-Stream
+      case "undo":   if (k === "act" && g.mode === "draw" && p.id === g.explainer && +b.n === g.drawN){ const st = g.strokes.pop(); if (st) g.drawPts -= st.p.length; drawSync(r); } return json(res, 200, { ok:true });
+      case "clear":  if (k === "act" && g.mode === "draw" && p.id === g.explainer && +b.n === g.drawN){ g.strokes = []; g.drawPts = 0; drawSync(r); } return json(res, 200, { ok:true });
       case "go":     if (k === "act" && g.phase === "ready" && p.id === g.explainer){ g.phase = "run"; g.endAt = Date.now() + g.time*1000; setTimer(r, g.time*1000, () => actEnd(r)); } break;
       case "got":    if (k === "act" && p.id === g.explainer && g.input === "rufen"){ const t = g.all ? +b.team : g.turn; if (r.teamNames[t] && t < r.teamCount) actMark(r, t); } break;
       case "guessWord": {
         if (k !== "act" || g.phase !== "run" || g.input !== "tippen" || p.id === g.explainer || !(g.all || p.team === g.turn)) break;
         const text = String(b.text || "").slice(0, 80).trim(); if (!text) break;
-        const ok = isCorrect(text, ACT[g.pts][g.word]);
-        g.feed.push({ name:p.name, team:p.team, text: ok ? ACT[g.pts][g.word] : text, ok });
+        const ok = isCorrect(text, g.word);
+        g.feed.push({ name:p.name, team:p.team, text: ok ? g.word : text, ok });
         if (g.feed.length > 30) g.feed.shift();
         if (ok) actMark(r, p.team);
         break;

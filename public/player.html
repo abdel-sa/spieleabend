@@ -64,6 +64,19 @@ body{padding:max(14px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-rig
 .rank div{display:flex;justify-content:space-between;padding:11px 14px;border-radius:12px;background:var(--ink);border-left:6px solid var(--c);font-weight:800}
 .rank div:first-child{background:color-mix(in srgb,var(--c) 22%,var(--ink))}
 form.row .big{padding:16px 20px}
+.word.small{font-size:clamp(22px,7vw,32px);padding:14px 12px;flex:1}
+.wordline{display:flex;gap:10px;align-items:center}
+.wordline .word:not(.small){flex:1}
+.lvl{font:900 13px var(--display);letter-spacing:-.02em;color:var(--ink);background:var(--mc,var(--gold));padding:7px 9px;border-radius:10px;white-space:nowrap}
+.padwrap{margin:0 -6px}
+.pad{touch-action:none;cursor:crosshair}
+.board-canvas{display:block;width:100%;aspect-ratio:4/3;border-radius:16px;background:var(--paper);box-shadow:0 5px 0 #cfc4b0}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw{width:38px;height:38px;border-radius:50%;border:3px solid var(--ink);background:var(--sw);box-shadow:0 3px 0 var(--ink);padding:0}
+.sw[aria-pressed="true"]{outline:3px solid var(--gold);outline-offset:2px}
+.sw.eraser{width:auto;border-radius:12px;padding:0 10px;font-weight:800;font-size:13px;color:var(--ink)}
+.btn.small{padding:8px 11px;font-size:14px}
+.row.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 </style>
 </head>
 <body>
@@ -91,7 +104,8 @@ function start(){
     if (key !== lastKey && V){ if ((v.phase === "buzz" && v.cur) || (v.game === "act" && v.isExplainer && v.phase === "choose") || (v.game === "leo" && v.phase === "board" && v.you && v.turn === v.you.team)) buzzFeel(); }
     const fresh = key !== lastKey; lastKey = key; V = v; render();
     if (fresh){ const cd = $("card"); cd.classList.add("enter"); setTimeout(() => cd.classList.remove("enter"), 700); }
-  }, ok => { const c = document.querySelector(".head .conn"); if (c) c.textContent = ok ? "" : "offline"; });
+  }, ok => { const c = document.querySelector(".head .conn"); if (c) c.textContent = ok ? "" : "offline"; },
+  (t, d) => { if (t === "drawsync" && V && V.isExplainer && !pad.B.strokes.length) pad.B.sync(d); });
   fetch("/events?room=" + room).then(r => { if (r.status === 404){ store.del("spieleabend-room"); room = ""; renderCode("Diesen Raum gibt es nicht mehr. Bitte den neuen QR-Code scannen."); } else r.body?.cancel(); });
 }
 
@@ -233,9 +247,54 @@ function renderLeo(c){
 }
 
 /* ---------- Erklären & Pantomime ---------- */
+const MODE_N = { say:"Erklären", mime:"Pantomime", draw:"Zeichnen" }, MODE_C = { say:"var(--say)", mime:"var(--mime)", draw:"var(--draw)" };
+/* Zeichenblock der zeichnenden Person: bleibt über Neuzeichnungen erhalten, schickt Striche gebündelt an den Server */
+const pad = (() => {
+  const B = makeBoard(), cv = B.cv;
+  const P = { B, color:0, size:1, pending:new Map(), sending:false, cur:null };
+  cv.classList.add("pad");
+  const pos = e => { const r = cv.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+  const queue = (s, pts) => { const q = P.pending.get(s.id) || { id:s.id, c:s.c, w:s.w, p:[] }; q.p.push(...pts); P.pending.set(s.id, q); };
+  cv.addEventListener("pointerdown", e => {
+    e.preventDefault(); cv.setPointerCapture(e.pointerId);
+    const s = { id:Math.random().toString(36).slice(2, 10), c:P.color, w:P.size, p:[pos(e)] };
+    P.cur = s; B.strokes.push(s); B.seg(s, 0); queue(s, s.p.slice());
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!P.cur) return; e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e], pts = (evs.length ? evs : [e]).map(pos);
+    const from = P.cur.p.length; P.cur.p.push(...pts); B.seg(P.cur, from); queue(P.cur, pts);
+  });
+  const up = () => { P.cur = null; };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up); cv.addEventListener("lostpointercapture", up);
+  // Nacheinander senden, damit kein Strichstück das vorige überholt
+  setInterval(async () => {
+    if (P.sending || !P.pending.size || !V) return;
+    const segs = [...P.pending.values()]; P.pending.clear(); P.sending = true;
+    try { await post("act", { room, token, do:"draw", n:B.n, segs }); } catch(e){}
+    P.sending = false;
+  }, 60);
+  return P;
+})();
+function padTools(){
+  const t = el("div", "tools");
+  INK.forEach((col, i) => {
+    const b = el("button", "sw" + (i === 4 ? " eraser" : "")); b.style.setProperty("--sw", col); b.setAttribute("aria-pressed", pad.color === i);
+    b.setAttribute("aria-label", i === 4 ? "Radierer" : "Farbe " + (i + 1)); if (i === 4) b.textContent = "Radierer";
+    b.onclick = () => { pad.color = i; if (i === 4 && pad.size < 2) pad.size = 2; else if (i !== 4 && pad.size === 2) pad.size = 1; render(); };
+    t.appendChild(b);
+  });
+  const sz = el("button", "btn small", pad.size === 0 ? "Dünn" : pad.size === 1 ? "Mittel" : "Dick");
+  sz.onclick = () => { pad.size = (pad.size + 1) % 3; render(); };
+  const un = el("button", "btn small", "Zurück"); un.onclick = () => { pad.B.strokes.pop(); pad.B.redraw(); act("undo", { n:pad.B.n }); };
+  const cl = el("button", "btn small", "Löschen"); cl.onclick = () => { pad.B.strokes = []; pad.B.redraw(); act("clear", { n:pad.B.n }); };
+  t.append(sz, un, cl);
+  return t;
+}
+
 function renderAct(c){
   const my = V.you.team, mine = V.turn === my, tn = V.teams[V.turn].name;
-  const mc = V.mode === "say" ? "var(--say)" : "var(--mime)", mname = V.mode === "say" ? "Erklären" : "Pantomime";
+  const mc = MODE_C[V.mode], mname = MODE_N[V.mode];
   c.style.setProperty("--mc", mc);
   if (V.phase === "who"){
     c.appendChild(el("p", "mode", mname));
@@ -248,16 +307,17 @@ function renderAct(c){
     return;
   }
   if (V.isExplainer){
-    c.appendChild(el("p", "mode", mname));
+    if (V.phase !== "run") c.appendChild(el("p", "mode", mname));
     if (V.phase === "choose"){
-      c.appendChild(el("p", "q", "Wähle die Schwierigkeit"));
+      c.appendChild(el("p", "q", "Wie schwer soll es losgehen?"));
       const d = el("div", "diff");
-      [[3,"Leicht"],[4,"Mittel"],[5,"Schwer"]].forEach(([p, l]) => { const b = el("button"); b.appendChild(el("b", null, p)); b.append(l); b.onclick = () => act("diff", { pts:p }); d.appendChild(b); });
+      [[1,"Leicht"],[2,"Mittel"],[3,"Schwer"]].forEach(([lv, l]) => { const b = el("button"); b.appendChild(el("b", null, lv + 1)); b.append(l); b.onclick = () => act("diff", { level:lv }); d.appendChild(b); });
       c.appendChild(d);
+      c.appendChild(el("p", "secret", "Zahl = Punkte für den ersten Begriff. Jeder Treffer macht den nächsten schwerer und bringt einen Punkt mehr, bis 6."));
       const u = el("button", "btn", "Doch nicht ich"); u.onclick = () => act("unclaim"); c.appendChild(u);
     }
     if (V.phase === "ready"){
-      c.appendChild(el("p", "secret", "Nur du siehst die Begriffe. Handy nicht herzeigen! Nach jedem Treffer kommt sofort der nächste."));
+      c.appendChild(el("p", "secret", V.mode === "draw" ? "Nur du siehst den Begriff. Gezeichnet wird hier am Handy, das Bild erscheint am Fernseher. Keine Buchstaben oder Zahlen malen!" : "Nur du siehst den Begriff. Handy nicht herzeigen!"));
       c.appendChild(el("p", "word", V.word));
       const r = el("div", "row center");
       const s = el("button", "btn", "Anderer Begriff"); s.onclick = () => act("swapWord");
@@ -266,9 +326,15 @@ function renderAct(c){
     }
     if (V.phase === "run"){
       const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, V.time)); c.appendChild(l);
-      c.appendChild(el("p", "word", V.word));
+      const wl = el("div", "wordline"); wl.append(el("p", "word" + (V.mode === "draw" ? " small" : ""), V.word), el("span", "lvl", "Stufe " + V.level + " · " + V.pts + " P"));
+      c.appendChild(wl);
+      if (V.mode === "draw"){
+        if (pad.B.n !== V.drawN){ pad.B.reset(V.drawN); pad.pending.clear(); }
+        const w = el("div", "padwrap"); w.appendChild(pad.B.cv); c.appendChild(w); requestAnimationFrame(pad.B.fit);
+        c.appendChild(padTools());
+      }
       if (V.input === "tippen"){
-        c.appendChild(el("p", "wait", (V.all ? "Alle" : "Dein Team") + " tippen die Lösung am Handy. Ist sie richtig, kommt automatisch der nächste Begriff."));
+        c.appendChild(el("p", "wait", (V.all ? "Alle" : "Dein Team") + " tippen die Lösung. Ist sie richtig, kommt automatisch der nächste Begriff."));
         renderFeed(c);
       } else if (V.all){
         c.appendChild(el("p", "eyebrow", "Wer hat's erraten?"));
@@ -276,8 +342,11 @@ function renderAct(c){
         V.teams.forEach((t, i) => { if (!t.members.length) return; const b = el("button", "big", t.name); b.style.setProperty("--c", TC(i)); b.onclick = () => { buzzFeel(); act("got", { team:i }); }; r.appendChild(b); });
         c.appendChild(r);
       } else { const b = el("button", "big full", "Richtig! +" + V.pts); b.style.setProperty("--c", "var(--ok)"); b.onclick = () => { buzzFeel(); act("got"); }; c.appendChild(b); }
-      const f = el("button", "btn", "Runde beenden"); f.onclick = () => act("fail"); c.appendChild(f);
-      c.appendChild(el("p", "secret", V.guessed + " erraten · " + (V.input === "rufen" ? "erst wenn du „Richtig!“ drückst, kommt der nächste Begriff" : "der nächste Begriff kommt, sobald jemand richtig tippt")));
+      const r2 = el("div", "row two");
+      const sk = el("button", "btn", "Überspringen"); sk.onclick = () => act("skip");
+      const f = el("button", "btn", "Runde beenden"); f.onclick = () => act("fail");
+      r2.append(sk, f); c.appendChild(r2);
+      c.appendChild(el("p", "secret", V.guessed + " erraten. Überspringen kostet nichts, die Stufe bleibt gleich."));
     }
     if (V.phase === "result"){
       renderWords(c);
@@ -285,26 +354,33 @@ function renderAct(c){
     }
     return;
   }
-  // alle anderen: Begriff nie sichtbar
+  // alle anderen
   c.appendChild(el("p", "mode", mname));
   const guessing = V.all || mine;
-  if (V.phase === "choose" || V.phase === "ready") c.appendChild(el("p", "q", V.explainerName + (V.phase === "choose" ? " wählt die Schwierigkeit …" : " schaut sich den Begriff an …")));
+  if (V.phase === "choose" || V.phase === "ready") c.appendChild(el("p", "q", V.explainerName + (V.phase === "choose" ? " wählt, wie schwer es losgeht …" : " schaut sich den Begriff an …")));
+  if (V.watching && V.word){
+    // Mitfiebern: andere Teams sehen den Begriff
+    c.appendChild(el("p", "secret", tn + " ist dran. Der Begriff zum Mitfiebern, nicht vorsagen!"));
+    const wl = el("div", "wordline"); wl.append(el("p", "word small", V.word)); if (V.level) wl.appendChild(el("span", "lvl", "Stufe " + V.level + " · " + V.pts + " P"));
+    c.appendChild(wl);
+  }
   if (V.phase === "run"){
     const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, V.time)); c.appendChild(l);
+    const look = { say:"Hör gut zu", mime:"Schau genau hin", draw:"Schau auf den Fernseher" }[V.mode];
     if (V.canType){
-      c.appendChild(el("p", "q", V.mode === "say" ? "Hör zu und tippe die Lösung ein!" : "Schau hin und tippe die Lösung ein!"));
+      c.appendChild(el("p", "q", look + " und tippe die Lösung ein!"));
       const f = el("form", "row"); const i = el("input", "text"); i.id = "wordguess"; i.autocomplete = "off"; i.autocapitalize = "off"; i.spellcheck = false; i.placeholder = "Lösung"; i.style.flex = "1";
       const b = el("button", "big", "Senden"); f.append(i, b);
       f.onsubmit = e => { e.preventDefault(); const t = i.value.trim(); if (!t) return; draft.wordguess = ""; i.value = ""; act("guessWord", { text:t }); i.focus(); };
       c.appendChild(f);
-      const mine = V.feed.filter(x => x.name === V.you.name).slice(-1)[0];
-      if (mine) c.appendChild(el("p", mine.ok ? "result" : "err", mine.ok ? "Richtig! " + mine.text : "„" + mine.text + "“ ist es nicht"));
+      const last = V.feed.filter(x => x.name === V.you.name).slice(-1)[0];
+      if (last) c.appendChild(el("p", last.ok ? "result" : "err", last.ok ? "Richtig! " + last.text : "„" + last.text + "“ ist es nicht"));
       renderFeed(c);
-    } else c.appendChild(el("p", "q", guessing ? (V.mode === "say" ? "Hör gut zu und rate laut!" : "Schau genau hin und rate laut!") : tn + " ist dran. Nicht vorsagen!"));
+    } else if (guessing) c.appendChild(el("p", "q", look + " und rate laut!"));
+    c.appendChild(el("p", "result", V.guessed + (V.guessed === 1 ? " Begriff" : " Begriffe") + " erraten"));
   }
-  if (V.phase === "run") c.appendChild(el("p", "result", V.guessed + (V.guessed === 1 ? " Begriff" : " Begriffe") + " erraten"));
   if (V.phase === "result") renderWords(c);
-  else c.appendChild(el("p", "secret", "Die Begriffe sieht nur " + (V.explainerName || "die Person, die dran ist") + " am eigenen Handy."));
+  else if (!V.watching) c.appendChild(el("p", "secret", "Den Begriff sieht nur " + (V.explainerName || "die Person, die dran ist") + (V.all ? "." : " und die anderen Teams.")));
 }
 function renderFeed(c){
   if (!V.feed || !V.feed.length) return;
@@ -316,7 +392,7 @@ function renderWords(c){
   const got = V.words.filter(x => x.team != null);
   c.appendChild(el("p", "result", got.length ? got.length + (got.length === 1 ? " Begriff" : " Begriffe") + " erraten" : "Kein Begriff erraten"));
   const m = el("div", "mates");
-  V.words.forEach(x => { const s = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " ✓" : "")); s.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); m.appendChild(s); });
+  V.words.forEach(x => { const s = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " +" + x.pts : "")); s.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); m.appendChild(s); });
   c.appendChild(m);
 }
 

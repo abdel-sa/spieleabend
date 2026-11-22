@@ -5,7 +5,7 @@
   --bg:#2a0f2e; --bg-hi:#5e2266; --panel:#3d1742; --raise:#4f1f56; --line:#6e3176; --ink:#1a0820;
   --fg:#fbf3fb; --muted:#dcbfe0; --gold:#ffc53d; --paper:#f5f0e6; --ok:#43e5a6; --bad:#ff5a5f;
   --t0:#ff6f59; --t1:#43e5a6; --t2:#6fd3ff; --t3:#c6f04a;
-  --say:#ffc53d; --mime:#ff6f59;
+  --say:#ffc53d; --mime:#ff6f59; --draw:#ff8fd6;
   --display:"Unbounded","Arial Black",system-ui,sans-serif;
   --body:"Figtree","Segoe UI",system-ui,sans-serif;
   --r-panel:18px; --r-ctl:14px;
