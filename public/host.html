@@ -62,12 +62,30 @@ body{padding:18px 28px 24px;min-height:100dvh;display:flex;flex-direction:column
 .tcol .m button{margin-left:auto;border:0;background:transparent;color:var(--muted);font-size:20px;line-height:1;padding:2px 6px;border-radius:8px}
 .tcol .m button:hover{background:var(--bad);color:var(--fg)}
 .tcol .empty{color:var(--muted);font-size:14px;font-weight:600}
-.games{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.game{background:var(--panel);border-radius:var(--r-panel);padding:20px;display:flex;flex-direction:column;gap:12px;border:2px solid var(--line)}
-.game h3{margin:0;font:900 23px/1.05 var(--display);letter-spacing:-.03em}
-.game p{margin:0;color:var(--muted);line-height:1.45;font-size:15px}
-.game .opt{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
-.game .big{margin-top:auto;width:100%}
+.games{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.gtile{background:var(--panel);border-radius:var(--r-panel);border:2px solid var(--line);border-left:8px solid var(--gc);min-width:0;transition:border-color .15s}
+.gtile:hover{border-color:color-mix(in srgb,var(--gc) 45%,var(--line));border-left-color:var(--gc)}
+.gtile.open{grid-column:1/-1;border-color:color-mix(in srgb,var(--gc) 55%,var(--line));border-left-color:var(--gc)}
+.gt-head{display:flex;align-items:center;gap:14px;padding:14px 16px 14px 18px}
+.gt-toggle{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px;background:transparent;border:0;padding:0;text-align:left;color:var(--fg)}
+.gt-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.gt-title{font:900 21px/1.1 var(--display);letter-spacing:-.03em}
+.gt-need{font-size:12px;font-weight:800;color:var(--ink);background:var(--gc);padding:2px 8px;border-radius:999px}
+.gt-tag{font-size:15px;color:var(--muted);line-height:1.35}
+.gt-sum{font-size:13px;font-weight:700;color:var(--gc)}
+.gt-chev{margin-top:4px;font-size:13px;font-weight:800;color:var(--fg);border:2px solid var(--line);border-radius:999px;padding:3px 10px}
+.gt-chev::after{content:" ▾";color:var(--gc)}
+.gtile.open .gt-chev::after{content:" ▴"}
+.gt-toggle:hover .gt-chev{border-color:var(--gc)}
+.gt-go{flex:none;padding:14px 22px;font-size:16px}
+.gt-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px 28px;padding:4px 18px 20px 18px;border-top:2px dashed var(--line);margin:0 0 0 0;padding-top:16px}
+.gt-body .opt{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0}
+.gt-body .opt.wide,.gt-note{grid-column:1/-1}
+.gt-note{margin:0;color:var(--muted);font-size:15px;line-height:1.45;max-width:75ch}
+.gtile.opening .gt-body{animation:gtopen .28s var(--press) both}
+@keyframes gtopen{from{opacity:0;transform:translateY(-6px)}}
+@media (max-width:1100px){ .games{grid-template-columns:1fr} }
+@media (max-width:560px){ .gt-head{flex-direction:column;align-items:stretch} .gt-go{width:100%} }
 .last{background:var(--ink);border-radius:var(--r-ctl);padding:12px 16px;color:var(--muted);font-weight:600}
 .last b{color:var(--gold)}
 
@@ -340,6 +358,24 @@ function seg(list, val, label, set){
 }
 function opt(label, node){ const d = el("div", "opt"); d.append(el("span", "lbl", label), node); return d; }
 
+
+/* Spielkachel in der Lobby: zu = Name, Kurzinfo, Schnellstart. Auf = Einstellungen über die volle Breite. */
+let openGame = store.get("spieleabend-open") || null, justOpened = null;
+function gameTile(key, o){
+  const open = openGame === key;
+  const t = el("section", "gtile" + (open ? " open" : "")); t.style.setProperty("--gc", o.color);
+  if (open && justOpened === key){ t.classList.add("opening"); justOpened = null; }
+  const head = el("div", "gt-head");
+  const tog = el("button", "gt-toggle"); tog.setAttribute("aria-expanded", open); tog.setAttribute("aria-controls", "gt-" + key);
+  const top = el("span", "gt-top"); top.append(el("span", "gt-title", o.title), el("span", "gt-need", o.need));
+  tog.append(top, el("span", "gt-tag", o.tag), el("span", "gt-sum", o.summary), el("span", "gt-chev", open ? "Einstellungen schließen" : "Einstellungen"));
+  tog.onclick = () => { openGame = open ? null : key; justOpened = openGame; store.set("spieleabend-open", openGame); render(); };
+  const go = el("button", "big gt-go", "Starten"); go.style.setProperty("--c", o.color); go.onclick = o.start;
+  head.append(tog, go); t.appendChild(head);
+  if (open){ const body = el("div", "gt-body"); body.id = "gt-" + key; o.settings(body); t.appendChild(body); }
+  return t;
+}
+
 function renderLobby(st){
   st.classList.add("top");
   const L = el("div", "lobby");
@@ -380,41 +416,55 @@ function renderLobby(st){
   side.appendChild(tg);
   side.appendChild(el("span", "lbl", "Spiel wählen"));
   const gs = el("div", "games");
+  const note = (box, text) => box.appendChild(el("p", "gt-note", text));
 
-  const s1 = el("div", "game"); s1.append(el("h3", null, "Schätz-Duell"), el("p", null, "Alle schätzen gleichzeitig am Handy. Wer am nächsten dran ist, punktet."));
-  s1.append(opt("Wertung", seg(["solo","team"], opts.sch.mode, m => m === "team" ? "Für das Team" : "Jeder für sich", m => opts.sch.mode = m)),
-            opt("Fragen", seg([5,10,15,20], opts.sch.rounds, n => n, n => opts.sch.rounds = n)),
-            opt("Zeit pro Frage", seg([30,60,90,0], opts.sch.time, n => n ? n + " s" : "ohne", n => opts.sch.time = n)));
-  const cats = el("div", "seg");
-  const allOn = !opts.sch.cats.length;
-  const ab = el("button", null, "Alle"); ab.setAttribute("aria-pressed", allOn); ab.onclick = () => { opts.sch.cats = []; saveOpts(); render(); }; cats.appendChild(ab);
-  V.schCats.forEach(c => { const b = el("button", null, c); b.setAttribute("aria-pressed", !allOn && opts.sch.cats.includes(c));
-    b.onclick = () => { const s = new Set(opts.sch.cats); s.has(c) ? s.delete(c) : s.add(c); opts.sch.cats = [...s]; saveOpts(); render(); }; cats.appendChild(b); });
-  s1.appendChild(opt("Kategorien", cats));
-  const g1 = el("button", "big", "Starten"); g1.onclick = () => host("start", { game:"sch", opts:opts.sch }); s1.appendChild(g1);
+  gs.appendChild(gameTile("sch", { title:"Schätz-Duell", tag:"Alle schätzen gleichzeitig, wer am nächsten dran ist, punktet.", color:"var(--gold)", need:"ab 1 Person",
+    summary:[opts.sch.mode === "team" ? "Teams" : "Jeder für sich", opts.sch.rounds + " Fragen", opts.sch.time ? opts.sch.time + " s" : "ohne Zeit"].join(" · "),
+    start:() => host("start", { game:"sch", opts:opts.sch }),
+    settings:box => {
+      box.append(opt("Wertung", seg(["solo","team"], opts.sch.mode, m => m === "team" ? "Für das Team" : "Jeder für sich", m => opts.sch.mode = m)),
+                 opt("Fragen", seg([5,10,15,20], opts.sch.rounds, n => n, n => opts.sch.rounds = n)),
+                 opt("Zeit pro Frage", seg([30,60,90,0], opts.sch.time, n => n ? n + " s" : "ohne", n => opts.sch.time = n)));
+      const cats = el("div", "seg"), allOn = !opts.sch.cats.length;
+      const ab = el("button", null, "Alle"); ab.setAttribute("aria-pressed", allOn); ab.onclick = () => { opts.sch.cats = []; saveOpts(); render(); }; cats.appendChild(ab);
+      V.schCats.forEach(c => { const bt = el("button", null, c); bt.setAttribute("aria-pressed", !allOn && opts.sch.cats.includes(c));
+        bt.onclick = () => { const s2 = new Set(opts.sch.cats); s2.has(c) ? s2.delete(c) : s2.add(c); opts.sch.cats = [...s2]; saveOpts(); render(); }; cats.appendChild(bt); });
+      const oc = opt("Kategorien", cats); oc.classList.add("wide"); box.appendChild(oc);
+    } }));
 
-  const s2 = el("div", "game"); s2.append(el("h3", null, "Leopardy"), el("p", null, "Ein Team wählt ein Feld, dann buzzern alle am Handy. Wer zuerst drückt, antwortet."));
-  s2.append(opt("Antworten", seg(["tippen","rufen"], opts.leo.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.leo.input = m)),
-            el("p", null, opts.leo.input === "tippen" ? "Das Team tippt die Antwort am Handy ein, die Prüfung verzeiht Tippfehler." : "Das Team ruft die Antwort laut, du entscheidest am Host-Bildschirm mit Richtig oder Falsch."));
-  s2.append(opt("Brett", seg(["kurz","voll"], opts.leo.board, b => b === "kurz" ? "Kurz · 24 Felder" : "Voll · 48 Felder", b => opts.leo.board = b)));
-  const g2 = el("button", "big", "Starten"); g2.onclick = () => host("start", { game:"leo", opts:opts.leo }); s2.appendChild(g2);
+  gs.appendChild(gameTile("leo", { title:"Leopardy", tag:"Feld wählen, buzzern, antworten. 6 von 12 Themen pro Spiel.", color:"var(--t2)", need:"2+ Teams",
+    summary:[opts.leo.input === "tippen" ? "Eintippen" : "Rausrufen", opts.leo.board === "kurz" ? "24 Felder" : "48 Felder"].join(" · "),
+    start:() => host("start", { game:"leo", opts:opts.leo }),
+    settings:box => {
+      box.append(opt("Antworten", seg(["tippen","rufen"], opts.leo.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.leo.input = m)),
+                 opt("Brett", seg(["kurz","voll"], opts.leo.board, x => x === "kurz" ? "Kurz, 24 Felder" : "Voll, 48 Felder", x => opts.leo.board = x)));
+      note(box, opts.leo.input === "tippen" ? "Das Team tippt die Antwort am Handy ein. Tippfehler sind egal, die KI erkennt auch Umschreibungen." : "Das Team ruft die Antwort laut, du entscheidest hier mit Richtig oder Falsch.");
+    } }));
 
-  const s3 = el("div", "game"); s3.append(el("h3", null, "Erklären, Pantomime & Zeichnen"), el("p", null, "Das Team schickt jemanden vor, nur diese Person sieht den Begriff. Gezeichnet wird am Handy, das Bild erscheint live hier. Jeder Treffer macht den nächsten Begriff schwerer, Punkte pro Begriff: Leicht 1, Mittel 2, Schwer 3."));
-  s3.append(opt("Antworten", seg(["rufen","tippen"], opts.act.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.act.input = m)),
-            el("p", null, opts.act.input === "rufen" ? "Alle rufen durcheinander. Wer erklärt oder vorspielt, drückt „Richtig!“, erst dann kommt der nächste Begriff." : "Das ratende Team tippt die Lösung am Handy ein. Ist sie richtig, kommt automatisch der nächste Begriff."));
-  s3.append(opt("Zeit pro Begriff", seg([60,90,120], opts.act.time, n => n + " s", n => opts.act.time = n)),
-            opt("Ziel", seg([20,30,40,50], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)),
-            opt("Alle Teams raten", seg(["an","aus"], opts.act.all, m => m === "an" ? "An" : "Aus", m => opts.act.all = m)));
-  const ms = el("div", "seg");
-  ["say","mime","draw"].forEach(m => { const on = opts.act.modes.includes(m); const bt = el("button", null, MODE_N[m]); bt.setAttribute("aria-pressed", on);
-    bt.onclick = () => { const s2 = new Set(opts.act.modes); if (on){ if (s2.size > 1) s2.delete(m); } else s2.add(m); opts.act.modes = ["say","mime","draw"].filter(x => s2.has(x)); saveOpts(); render(); }; ms.appendChild(bt); });
-  s3.append(opt("Modi (zufällig gemischt)", ms));
-  s3.append(el("p", null, opts.act.all === "an" ? "Ab und zu (etwa jede 7. Runde) dürfen alle Teams mitraten, Punkte bekommt, wer es zuerst errät." : "Es rät immer nur das Team, das gerade dran ist."));
-  const g3 = el("button", "big", "Starten"); g3.onclick = () => host("start", { game:"act", opts:opts.act }); s3.appendChild(g3);
-  const s4 = el("div", "game"); s4.append(el("h3", null, "Stadt-Land-Fluss-Blitz"), el("p", null, "Jeder gegen jeden: ein Buchstabe, 5 zufällige Kategorien. Die KI prüft jede Antwort sofort. Wer als Erstes alles richtig hat, stoppt die Runde für alle."));
-  s4.append(opt("Runden", seg([3,5,8], opts.slf.rounds, n => n + " Runden", n => opts.slf.rounds = n)));
-  const g4 = el("button", "big", "Starten"); g4.onclick = () => host("start", { game:"slf", opts:opts.slf }); s4.appendChild(g4);
-  gs.append(s1, s2, s3, s4); side.appendChild(gs);
+  gs.appendChild(gameTile("act", { title:"Erklären, Pantomime & Zeichnen", tag:"Einer erklärt, spielt vor oder zeichnet, das eigene Team rät.", color:"var(--draw)", need:"2+ Teams",
+    summary:[opts.act.modes.map(m => MODE_N[m]).join(", "), opts.act.time + " s", "Ziel " + opts.act.goal].join(" · "),
+    start:() => host("start", { game:"act", opts:opts.act }),
+    settings:box => {
+      const ms = el("div", "seg");
+      ["say","mime","draw"].forEach(m => { const on = opts.act.modes.includes(m); const bt = el("button", null, MODE_N[m]); bt.setAttribute("aria-pressed", on);
+        bt.onclick = () => { const s2 = new Set(opts.act.modes); if (on){ if (s2.size > 1) s2.delete(m); } else s2.add(m); opts.act.modes = ["say","mime","draw"].filter(x => s2.has(x)); saveOpts(); render(); }; ms.appendChild(bt); });
+      box.append(opt("Modi, zufällig gemischt", ms),
+                 opt("Antworten", seg(["rufen","tippen"], opts.act.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.act.input = m)),
+                 opt("Zeit pro Runde", seg([60,90,120], opts.act.time, n => n + " s", n => opts.act.time = n)),
+                 opt("Ziel", seg([20,30,40,50], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)),
+                 opt("Alle Teams raten", seg(["an","aus"], opts.act.all, m => m === "an" ? "An" : "Aus", m => opts.act.all = m)));
+      note(box, "Punkte pro Begriff je nach Einstieg: Leicht 1, Mittel 2, Schwer 3. Die Begriffe werden nach jedem Treffer schwerer." +
+        (opts.act.all === "an" ? " Etwa jede 7. Runde dürfen alle Teams mitraten." : ""));
+    } }));
+
+  gs.appendChild(gameTile("slf", { title:"Stadt-Land-Fluss-Blitz", tag:"Ein Buchstabe, 5 Kategorien, die KI prüft jede Antwort.", color:"var(--ok)", need:"ab 1 Person",
+    summary:[opts.slf.rounds + " Runden", "jeder gegen jeden"].join(" · "),
+    start:() => host("start", { game:"slf", opts:opts.slf }),
+    settings:box => {
+      box.append(opt("Runden", seg([3,5,8], opts.slf.rounds, n => n + " Runden", n => opts.slf.rounds = n)));
+      note(box, "Wer als Erstes alle 5 Kategorien richtig hat, stoppt die Runde für alle. Wertung: einzige gültige Antwort 20, eigene 10, doppelte 5.");
+    } }));
+  side.appendChild(gs);
   L.appendChild(side); st.appendChild(L);
 }
 
