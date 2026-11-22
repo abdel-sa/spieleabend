@@ -183,12 +183,12 @@ function leoSwap(r){
 }
 
 /* ---------------- Activity: Erklären, Pantomime, Zeichnen ---------------- */
-// Stufen 1–5. Jeder Treffer hebt die Stufe um 1, Punkte = Stufe + 1. Überspringen bleibt auf der Stufe.
+// Stufen 1–5. Jeder Treffer hebt die Stufe um 1 und zählt 1 Punkt. Überspringen bleibt auf der Stufe.
 const ACT_MODES = ["say", "mime", "draw"];
-const actPts = lv => lv + 1;
+const actPts = () => 1;
 function actStart(r, o){
   const modes = Array.isArray(o.modes) ? ACT_MODES.filter(m => o.modes.includes(m)) : [];
-  r.g = { kind:"act", input:o.input === "tippen" ? "tippen" : "rufen", feed:[], time:[60,90,120].includes(+o.time) ? +o.time : 90, goal:[30,50,75,100].includes(+o.goal) ? +o.goal : 50,
+  r.g = { kind:"act", input:o.input === "tippen" ? "tippen" : "rufen", feed:[], time:[60,90,120].includes(+o.time) ? +o.time : 90, goal:[10,15,20,30].includes(+o.goal) ? +o.goal : 15,
           modes: modes.length ? modes : ACT_MODES.slice(), allTeams:o.all !== "aus", turn:pickRand(activeTeams(r)), expIdx:Array(r.teamCount).fill(0), teamScores:Array(r.teamCount).fill(0) };
   actTurn(r);
 }

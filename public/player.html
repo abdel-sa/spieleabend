@@ -311,9 +311,9 @@ function renderAct(c){
     if (V.phase === "choose"){
       c.appendChild(el("p", "q", "Wie schwer soll es losgehen?"));
       const d = el("div", "diff");
-      [[1,"Leicht"],[2,"Mittel"],[3,"Schwer"]].forEach(([lv, l]) => { const b = el("button"); b.appendChild(el("b", null, lv + 1)); b.append(l); b.onclick = () => act("diff", { level:lv }); d.appendChild(b); });
+      [[1,"Leicht"],[2,"Mittel"],[3,"Schwer"]].forEach(([lv, l]) => { const b = el("button"); b.appendChild(el("b", null, lv)); b.append(l); b.onclick = () => act("diff", { level:lv }); d.appendChild(b); });
       c.appendChild(d);
-      c.appendChild(el("p", "secret", "Zahl = Punkte für den ersten Begriff. Jeder Treffer macht den nächsten schwerer und bringt einen Punkt mehr, bis 6."));
+      c.appendChild(el("p", "secret", "Jeder Treffer macht den nächsten Begriff ein bisschen schwerer."));
       const u = el("button", "btn", "Doch nicht ich"); u.onclick = () => act("unclaim"); c.appendChild(u);
     }
     if (V.phase === "ready"){
@@ -326,7 +326,7 @@ function renderAct(c){
     }
     if (V.phase === "run"){
       const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, V.time)); c.appendChild(l);
-      const wl = el("div", "wordline"); wl.append(el("p", "word" + (V.mode === "draw" ? " small" : ""), V.word), el("span", "lvl", "Stufe " + V.level + " · " + V.pts + " P"));
+      const wl = el("div", "wordline"); wl.append(el("p", "word" + (V.mode === "draw" ? " small" : ""), V.word), el("span", "lvl", "Stufe " + V.level));
       c.appendChild(wl);
       if (V.mode === "draw"){
         if (pad.B.n !== V.drawN){ pad.B.reset(V.drawN); pad.pending.clear(); }
@@ -341,7 +341,7 @@ function renderAct(c){
         const r = el("div", "row");
         V.teams.forEach((t, i) => { if (!t.members.length) return; const b = el("button", "big", t.name); b.style.setProperty("--c", TC(i)); b.onclick = () => { buzzFeel(); act("got", { team:i }); }; r.appendChild(b); });
         c.appendChild(r);
-      } else { const b = el("button", "big full", "Richtig! +" + V.pts); b.style.setProperty("--c", "var(--ok)"); b.onclick = () => { buzzFeel(); act("got"); }; c.appendChild(b); }
+      } else { const b = el("button", "big full", "Richtig!"); b.style.setProperty("--c", "var(--ok)"); b.onclick = () => { buzzFeel(); act("got"); }; c.appendChild(b); }
       const r2 = el("div", "row two");
       const sk = el("button", "btn", "Überspringen"); sk.onclick = () => act("skip");
       const f = el("button", "btn", "Runde beenden"); f.onclick = () => act("fail");
@@ -361,7 +361,7 @@ function renderAct(c){
   if (V.watching && V.word){
     // Mitfiebern: andere Teams sehen den Begriff
     c.appendChild(el("p", "secret", tn + " ist dran. Der Begriff zum Mitfiebern, nicht vorsagen!"));
-    const wl = el("div", "wordline"); wl.append(el("p", "word small", V.word)); if (V.level) wl.appendChild(el("span", "lvl", "Stufe " + V.level + " · " + V.pts + " P"));
+    const wl = el("div", "wordline"); wl.append(el("p", "word small", V.word)); if (V.level) wl.appendChild(el("span", "lvl", "Stufe " + V.level));
     c.appendChild(wl);
   }
   if (V.phase === "run"){
@@ -392,7 +392,7 @@ function renderWords(c){
   const got = V.words.filter(x => x.team != null);
   c.appendChild(el("p", "result", got.length ? got.length + (got.length === 1 ? " Begriff" : " Begriffe") + " erraten" : "Kein Begriff erraten"));
   const m = el("div", "mates");
-  V.words.forEach(x => { const s = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " +" + x.pts : "")); s.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); m.appendChild(s); });
+  V.words.forEach(x => { const s = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " ✓" : "")); s.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); m.appendChild(s); });
   c.appendChild(m);
 }
 

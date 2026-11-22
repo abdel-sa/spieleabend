@@ -140,7 +140,7 @@ body{padding:18px 28px 24px;min-height:100dvh;display:flex;flex-direction:column
 let V = null, H = store.get("spieleabend-host"), sse = null, confirmEnd = false, lastPhase = "";
 const opts = store.get("spieleabend-opts") || { sch:{ mode:"solo", rounds:10, time:60, cats:[] }, leo:{ board:"kurz", input:"tippen" }, act:{ time:90, goal:50, input:"rufen" } };
 opts.leo.input = opts.leo.input || "tippen"; opts.act.input = opts.act.input || "rufen";
-if (![30,50,75,100].includes(opts.act.goal)) opts.act.goal = 50;
+if (![10,15,20,30].includes(opts.act.goal)) opts.act.goal = 15;
 if (opts.act.all !== "aus") opts.act.all = "an";
 if (!Array.isArray(opts.act.modes) || !opts.act.modes.length) opts.act.modes = ["say","mime","draw"];
 const MODE_N = { say:"Erklären", mime:"Pantomime", draw:"Zeichnen" }, MODE_C = { say:"var(--say)", mime:"var(--mime)", draw:"var(--draw)" };
@@ -299,11 +299,11 @@ function renderLobby(st){
   s2.append(opt("Brett", seg(["kurz","voll"], opts.leo.board, b => b === "kurz" ? "Kurz · 24 Felder" : "Voll · 48 Felder", b => opts.leo.board = b)));
   const g2 = el("button", "big", "Starten"); g2.onclick = () => host("start", { game:"leo", opts:opts.leo }); s2.appendChild(g2);
 
-  const s3 = el("div", "game"); s3.append(el("h3", null, "Erklären, Pantomime & Zeichnen"), el("p", null, "Das Team schickt jemanden vor, nur diese Person sieht den Begriff. Gezeichnet wird am Handy, das Bild erscheint live hier. Jeder Treffer macht den nächsten Begriff schwerer und bringt mehr Punkte."));
+  const s3 = el("div", "game"); s3.append(el("h3", null, "Erklären, Pantomime & Zeichnen"), el("p", null, "Das Team schickt jemanden vor, nur diese Person sieht den Begriff. Gezeichnet wird am Handy, das Bild erscheint live hier. Jeder Treffer macht den nächsten Begriff schwerer, jeder erratene Begriff zählt 1 Punkt."));
   s3.append(opt("Antworten", seg(["rufen","tippen"], opts.act.input, m => m === "tippen" ? "Eintippen" : "Rausrufen", m => opts.act.input = m)),
             el("p", null, opts.act.input === "rufen" ? "Alle rufen durcheinander. Wer erklärt oder vorspielt, drückt „Richtig!“, erst dann kommt der nächste Begriff." : "Das ratende Team tippt die Lösung am Handy ein. Ist sie richtig, kommt automatisch der nächste Begriff."));
   s3.append(opt("Zeit pro Begriff", seg([60,90,120], opts.act.time, n => n + " s", n => opts.act.time = n)),
-            opt("Ziel", seg([30,50,75,100], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)),
+            opt("Ziel", seg([10,15,20,30], opts.act.goal, n => n + " Punkte", n => opts.act.goal = n)),
             opt("Alle Teams raten", seg(["an","aus"], opts.act.all, m => m === "an" ? "An" : "Aus", m => opts.act.all = m)));
   const ms = el("div", "seg");
   ["say","mime","draw"].forEach(m => { const on = opts.act.modes.includes(m); const bt = el("button", null, MODE_N[m]); bt.setAttribute("aria-pressed", on);
@@ -439,7 +439,7 @@ function renderAct(st){
       const head = el("div", "drawhead");
       const l = el("div", "dh-who"); l.append(el("span", "dh-mode", mname)); const p = el("p", null); p.append(nb, verb); l.appendChild(p);
       const c = el("div", "dh-clock"); c.append(countdown(V.endAt), timebar(V.endAt, V.time));
-      const r = el("div", "dh-score"); r.append(el("span", "lvl", "Stufe " + V.level), el("span", "lvlpts", V.pts + " Punkte"), el("span", "muted", V.guessed + " erraten"));
+      const r = el("div", "dh-score"); r.append(el("span", "lvl", "Stufe " + V.level), el("span", "lvlpts", V.guessed + " erraten"));
       head.append(l, c, r); st.appendChild(head);
       if (board.n !== V.drawN) board.reset(V.drawN);
       const wrap = el("div", "board-wrap"); wrap.appendChild(board.cv); st.appendChild(wrap);
@@ -449,7 +449,7 @@ function renderAct(st){
       who.append(nb, verb); st.appendChild(who);
       st.append(countdown(V.endAt), timebar(V.endAt, V.time));
       st.appendChild(el("p", "verdict", (V.all ? "Alle raten laut!" : tn + " rät laut!")));
-      const lv = el("p", "levelline"); lv.append(el("span", "lvl", "Stufe " + V.level), el("span", "lvlpts", V.pts + " Punkte pro Begriff"), el("span", "muted", V.guessed + " erraten")); st.appendChild(lv);
+      const lv = el("p", "levelline"); lv.append(el("span", "lvl", "Stufe " + V.level), el("span", "lvlpts", V.guessed + " erraten")); st.appendChild(lv);
     }
     if (V.input === "tippen"){
       const fd = el("div", "chips");
@@ -467,7 +467,7 @@ function renderAct(st){
     const v = el("p", "verdict", got.length ? Object.entries(sum).map(([t, p]) => "+" + p + " für " + V.teams[t].name).join(", ") : "Kein Begriff erraten");
     if (Object.keys(sum).length === 1) v.style.color = TC(+Object.keys(sum)[0]); st.appendChild(v);
     const ch = el("div", "chips");
-    V.words.forEach(x => { const c = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " +" + x.pts : x.open ? " (Zeit um)" : " (übersprungen)"));
+    V.words.forEach(x => { const c = el("span", "chip" + (x.team != null ? " done" : " off"), x.w + (x.team != null ? " ✓" : x.open ? " (Zeit um)" : " (übersprungen)"));
       c.style.setProperty("--c", x.team != null ? TC(x.team) : "var(--muted)"); ch.appendChild(c); });
     st.appendChild(ch);
     const n = el("button", "big", "Nächstes Team"); n.onclick = () => host("next"); st.appendChild(n);
