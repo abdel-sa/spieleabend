@@ -289,6 +289,11 @@ function _render(){
   }
   const mb = el("button", "btn music", musicOn ? "Musik an" : "Musik aus"); mb.setAttribute("aria-pressed", musicOn);
   mb.title = "Hintergrundmusik ein- oder ausschalten"; mb.onclick = () => setMusic(!musicOn); tb.appendChild(mb);
+  if (V.ai){
+    const md = el("button", "btn music", V.ai.mod ? "Moderator an" : "Moderator aus"); md.setAttribute("aria-pressed", V.ai.mod);
+    md.title = "KI-Moderator ein- oder ausschalten (die KI-Prüfung der Antworten bleibt davon unberührt)";
+    md.onclick = () => host("mod", { on:!V.ai.mod }); tb.appendChild(md);
+  }
   const fs = el("button", "btn", "Vollbild"); fs.onclick = () => document.documentElement.requestFullscreen?.().catch(() => {}); tb.appendChild(fs);
 
   const st = $("stage"); st.innerHTML = ""; st.className = "stage";

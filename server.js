@@ -291,7 +291,7 @@ const slfChecker = AI.makeChecker({
 });
 // KI-Moderator: ein lockerer Satz zu einer Situation. Läuft im Hintergrund, das Spiel wartet nie darauf.
 function aiComment(r, situation, apply){
-  if (!aiOn(r)) return;
+  if (!aiOn(r) || r.mod === false) return;   // Moderator separat abschaltbar
   AI.chat("Du bist der witzige Moderator eines Spieleabends unter Freunden (Deutsch, gerne locker österreichisch). " +
     "Schreibe genau EINEN kurzen Satz (höchstens 22 Wörter) zur Situation, nenne gern Namen. Erfinde keine Fakten, die nicht in der Situation stehen. " + SAFE +
     " Antworte nur als JSON: {\"text\":\"...\"}", situation, { maxTokens:400, temperature:0.9 })
@@ -426,7 +426,7 @@ function view(r, me, host){
     teamCount:r.teamCount,
     teams:[...Array(r.teamCount).keys()].map(t => ({ name:r.teamNames[t], members:membersOf(r,t).map(p => ({ id:p.id, name:p.name, online:p.conns > 0 })) })),
     game:g ? g.kind : null, lastResult:r.lastResult, schCats:SCH_CATS,
-    ai: host ? { ...AI.status(), enabled:r.ai !== false } : undefined
+    ai: host ? { ...AI.status(), enabled:r.ai !== false, mod:r.mod !== false } : undefined
   };
   if (!g) return v;
   v.phase = g.phase; v.endAt = g.endAt || null; v.ranking = g.ranking || null; v.comment = g.comment || "";
@@ -593,6 +593,7 @@ const server = http.createServer(async (req, res) => {
       case "slfToggle": if (k === "slf") slfToggle(r, String(b.id), +b.ci); break;
       case "slfStop":   if (k === "slf") slfStop(r, null); break;
       case "ai":        r.ai = !!b.on; break;
+      case "mod":       r.mod = !!b.on; if (!r.mod && g) g.comment = ""; break;
       case "pick":    if (k === "leo") leoPick(r, +b.ci, +b.lv); break;
       case "swap":    if (k === "leo") leoSwap(r); break;
       case "judge":   if (k === "leo" && g.input === "rufen" && g.phase === "answer") leoResolve(r, !!b.ok, b.ok ? "laut gerufen" : "laut gerufen, falsch"); break;
