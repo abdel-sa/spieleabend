@@ -88,7 +88,7 @@ function schReveal(r){
   g.last = { pts, hit, closest };
   g.phase = "reveal"; g.endAt = null; g.comment = "";
   const nm = id => (r.players.find(x => x.id === id) || {}).name || "?";
-  if (ids.length) aiComment(r, "Schätzfrage: " + Q[0] + " Richtige Antwort: " + a + " " + Q[2] + ". Tipps: " + ids.map(id => nm(id) + " " + g.guesses[id]).join(", ") +
+  if (ids.length) aiComment(r, "Schätzfrage: " + Q[0] + " Richtige Antwort: " + a + " " + Q[2] + ". Geschätzte Werte (keine Punkte): " + ids.map(id => nm(id) + " schätzte " + g.guesses[id] + " " + Q[2]).join(", ") +
     ". Am nächsten dran: " + closest.map(nm).join(" und ") + ".", t => { if (r.g !== g || g.phase !== "reveal" || g.order[g.round] !== qi) return false; g.comment = t; });
 }
 function schNext(r){
