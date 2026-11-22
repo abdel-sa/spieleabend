@@ -6,6 +6,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { isCorrect } = require("./match");
+const AI = require("./ai");
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = __dirname;
@@ -28,9 +29,10 @@ function newCode(){
   let c; do { c = Array.from({length:4}, () => pickRand(L)).join(""); } while (rooms.has(c));
   return c;
 }
-function createRoom(){
+function createRoom(seenList){
+  const seen = new Set((Array.isArray(seenList) ? seenList : []).filter(x => typeof x === "string" && x.length <= 8).slice(-15000));
   const r = { code:newCode(), hostToken:rid(16), players:[], teamCount:2, teamNames:[...TEAM_NAMES],
-              g:null, lastResult:null, seen:{ sch:new Set(), leo:new Set(), act:new Set() },
+              g:null, lastResult:null, seen, seenOut:{ add:[], del:[] }, ai:true,
               clients:new Set(), timer:null, touched:Date.now() };
   rooms.set(r.code, r);
   return r;
@@ -57,9 +59,7 @@ function schStart(r, o){
   const useCats = cats.length ? cats : SCH_CATS;
   const n = [5,10,15,20].includes(+o.rounds) ? +o.rounds : 10;
   const inCats = SCH.map((q,i) => i).filter(i => useCats.includes(SCH[i][3]));
-  let pool = inCats.filter(i => !r.seen.sch.has(i));
-  if (pool.length < n){ inCats.forEach(i => r.seen.sch.delete(i)); pool = inCats.slice(); }
-  const order = shuffle(pool).slice(0, n); order.forEach(i => r.seen.sch.add(i));
+  const order = drawFresh(r, inCats, i => "s|" + SCH[i][0], n);
   r.g = { kind:"sch", mode:o.mode === "team" ? "team" : "solo", time:[0,30,60,90].includes(+o.time) ? +o.time : 60,
           order, round:0, phase:"guess", guesses:{}, last:null, scores:{}, teamScores:Array(r.teamCount).fill(0) };
   schRound(r);
@@ -72,7 +72,7 @@ function schRound(r){
 function schReveal(r){
   const g = r.g; if (g.phase !== "guess") return;
   clearTimer(r);
-  const Q = SCH[g.order[g.round]], a = Q[1], year = Q[2] === "";
+  const qi = g.order[g.round], Q = SCH[qi], a = Q[1], year = Q[2] === "";
   const ids = Object.keys(g.guesses).filter(id => r.players.some(p => p.id === id));
   const d = Object.fromEntries(ids.map(id => [id, Math.abs(g.guesses[id] - a)]));
   const min = ids.length ? Math.min(...Object.values(d)) : null;
@@ -86,7 +86,10 @@ function schReveal(r){
     if (g.mode === "team" && p) g.teamScores[p.team] += pts[id];
   });
   g.last = { pts, hit, closest };
-  g.phase = "reveal"; g.endAt = null;
+  g.phase = "reveal"; g.endAt = null; g.comment = "";
+  const nm = id => (r.players.find(x => x.id === id) || {}).name || "?";
+  if (ids.length) aiComment(r, "Schätzfrage: " + Q[0] + " Richtige Antwort: " + a + " " + Q[2] + ". Tipps: " + ids.map(id => nm(id) + " " + g.guesses[id]).join(", ") +
+    ". Am nächsten dran: " + closest.map(nm).join(" und ") + ".", t => { if (r.g !== g || g.phase !== "reveal" || g.order[g.round] !== qi) return false; g.comment = t; });
 }
 function schNext(r){
   const g = r.g; if (g.phase !== "reveal") return;
@@ -104,20 +107,21 @@ const BUZZ_MS = 35000, REBUZZ_MS = 20000, ANSWER_MS = 30000, RESULT_MS = 15000;
 function leoStart(r, o){
   const rows = o.board === "kurz" ? [1,3,5,7] : [0,1,2,3,4,5,6,7];
   const picks = {};
-  LEO.pool.forEach((c,ci) => rows.forEach(lv => {
-    const n = c.lv[lv].length;
-    let opts = [...Array(n).keys()].filter(i => !r.seen.leo.has(ci+"-"+lv+"-"+i));
-    if (!opts.length){ for (let i=0;i<n;i++) r.seen.leo.delete(ci+"-"+lv+"-"+i); opts = [...Array(n).keys()]; }
-    const i = pickRand(opts); r.seen.leo.add(ci+"-"+lv+"-"+i); picks[ci+"-"+lv] = i;
+  const cats = drawFresh(r, LEO.pool.map((c, i) => i), i => "lc|" + LEO.pool[i].name, Math.min(6, LEO.pool.length));
+  cats.forEach((pi, ci) => rows.forEach(lv => {
+    const list = LEO.pool[pi].lv[lv];
+    const [q] = drawFresh(r, list, e => "l|" + e[0], 1);
+    picks[ci+"-"+lv] = list.indexOf(q);
   }));
-  r.g = { kind:"leo", input:o.input === "rufen" ? "rufen" : "tippen", rows, picks, used:{}, turn:pickRand(activeTeams(r)), phase:"board", cur:null,
+  r.g = { kind:"leo", input:o.input === "rufen" ? "rufen" : "tippen", rows, picks, cats, used:{}, turn:pickRand(activeTeams(r)), phase:"board", cur:null,
           teamScores:Array(r.teamCount).fill(0) };
   clearTimer(r);
 }
-const leoEntry = r => { const c = r.g.cur; return LEO.pool[c.ci].lv[c.lv][r.g.picks[c.ci+"-"+c.lv]]; };
+const leoCat = (g, ci) => LEO.pool[g.cats[ci]];
+const leoEntry = r => { const c = r.g.cur; return leoCat(r.g, c.ci).lv[c.lv][r.g.picks[c.ci+"-"+c.lv]]; };
 function leoPick(r, ci, lv){
   const g = r.g; const k = ci+"-"+lv;
-  if (g.phase !== "board" || !g.rows.includes(lv) || !LEO.pool[ci] || g.used[k] !== undefined) return;
+  if (g.phase !== "board" || !g.rows.includes(lv) || !(ci >= 0 && ci < g.cats.length) || g.used[k] !== undefined) return;
   g.cur = { ci, lv, v:LEO_VALUES[lv], tried:[], wrongs:[], buzzTeam:null, buzzPlayer:null, ok:null, winner:-1 };
   leoBuzzOpen(r, BUZZ_MS);
 }
@@ -136,8 +140,14 @@ function leoAnswer(r, p, text){
   const g = r.g, c = g.cur;
   if (g.phase !== "answer" || p.team !== c.buzzTeam) return;
   if (g.input === "rufen" && text != null) return;          // beim Rausrufen entscheidet der Spielleiter
-  const [, a] = leoEntry(r);
-  leoResolve(r, text != null && isCorrect(text, a, LEO.alt[a]), text);
+  const [q, a] = leoEntry(r);
+  const ok = text != null && isCorrect(text, a, LEO.alt[a]);
+  if (ok || text == null || !aiOn(r)) return leoResolve(r, ok, text);
+  // Tippfehler-Check sagt nein: die KI darf noch auf Synonyme und Umschreibungen prüfen
+  clearTimer(r); c.checking = text;
+  const done = res => { if (r.g !== g || g.phase !== "answer" || c.checking !== text) return; c.checking = null; leoResolve(r, !!(res && res.ok), text); broadcast(r); };
+  setTimeout(() => done(null), 7000);
+  guessChecker.check("leo|" + hk(q) + "|" + slfNorm(text), { frage:q, loesung:a, eingabe:text }, done);
 }
 function leoResolve(r, ok, text){
   const g = r.g, c = g.cur;
@@ -159,7 +169,7 @@ function leoResult(r){
 function leoContinue(r){
   const g = r.g; if (g.phase !== "result") return;
   clearTimer(r);
-  if (Object.keys(g.used).length >= LEO.pool.length * g.rows.length){ finish(r); return; }
+  if (Object.keys(g.used).length >= g.cats.length * g.rows.length){ finish(r); return; }
   if (g.cur.winner < 0){ const at = activeTeams(r); g.turn = at[(at.indexOf(g.turn) + 1) % at.length] ?? at[0]; }
   g.phase = "board"; g.cur = null; g.endAt = null;
 }
@@ -177,7 +187,7 @@ function leoOverride(r, ok){
 }
 function leoSwap(r){
   const g = r.g, c = g.cur; if (g.phase !== "buzz" || c.wrongs.length) return;
-  const n = LEO.pool[c.ci].lv[c.lv].length, k = c.ci+"-"+c.lv;
+  const n = leoCat(g, c.ci).lv[c.lv].length, k = c.ci+"-"+c.lv;
   const opts = [...Array(n).keys()].filter(i => i !== g.picks[k]);
   g.picks[k] = pickRand(opts); leoBuzzOpen(r, BUZZ_MS);
 }
@@ -200,10 +210,10 @@ function actTurn(r){
   g.phase = "who"; g.level = null; g.base = null; g.word = null; g.words = []; g.feed = []; g.endAt = null; actClearDrawing(g); clearTimer(r);
 }
 function actDraw(r, exclude){
-  const g = r.g, list = ACT[g.mode][g.level], key = w => g.mode + "|" + w;
-  let opts = list.filter(w => w !== exclude && !r.seen.act.has(key(w)));
-  if (!opts.length){ list.forEach(w => r.seen.act.delete(key(w))); opts = list.filter(w => w !== exclude); }
-  const w = pickRand(opts); r.seen.act.add(key(w)); return w;
+  const g = r.g, list = ACT[g.mode][g.level], key = w => "a|" + g.mode + "|" + w;
+  let opts = list.filter(w => w !== exclude && !seenHas(r, key(w)));
+  if (!opts.length){ list.forEach(w => seenDel(r, key(w))); opts = list.filter(w => w !== exclude); }
+  const w = pickRand(opts); seenAdd(r, key(w)); return w;
 }
 function actNewWord(r, exclude){ const g = r.g; g.word = actDraw(r, exclude); actClearDrawing(g); }
 function actClearDrawing(g){ g.drawN = (g.drawN || 0) + 1; g.strokes = []; g.drawPts = 0; }
@@ -256,15 +266,147 @@ function drawSync(r, only){
   if (only) only.res.write(msg); else for (const c of drawWatchers(r)) c.res.write(msg);
 }
 
+/* ---------------- KI-Helfer ---------------- */
+const aiOn = r => r.ai !== false && AI.available();
+const SAFE = "Familienfreundlich, nie gemein oder anzüglich, keine Schimpfwörter, nichts, was religiöse Gefühle verletzt (viele Spieler sind muslimisch).";
+// Prüft getippte Lösungen, die der Tippfehler-Check nicht erkannt hat (Synonyme, Kurzformen, andere Sprache)
+const guessChecker = AI.makeChecker({
+  system: "Du bist Schiedsrichter bei einem deutschsprachigen Quiz- und Ratespiel. Für jedes Item: Meint 'eingabe' dieselbe Sache wie 'loesung'? " +
+    "Ok sind Synonyme, Kurzformen, andere Schreibweisen, der deutsche oder englische Name und kleine Tippfehler. " +
+    "Nicht ok sind Oberbegriffe, nur verwandte Dinge, Teilantworten oder Ungenaues. " +
+    "Antworte nur als JSON: {\"results\":[{\"i\":0,\"ok\":true,\"hint\":\"\"}]}",
+  render: items => JSON.stringify({ items:items.map((it, i) => ({ i, ...it })) }),
+});
+// Stadt-Land-Fluss-Schiedsrichter
+const slfChecker = AI.makeChecker({
+  system: "Du bist Schiedsrichter bei Stadt-Land-Fluss auf Deutsch (Spieler aus Österreich und Deutschland). Prüfe jedes Item: " +
+    "1) Passt 'antwort' wirklich zur 'kategorie' und gibt es das tatsächlich (auch international, arabisch oder türkisch ist ok)? " +
+    "2) Beginnt die Antwort mit 'buchstabe' (Artikel wie der/die/das zählen nicht, Ä=A, Ö=O, Ü=U)? " +
+    "Sei großzügig bei Schreibvarianten und kleinen Tippfehlern, streng bei erfundenen Wörtern und Dingen, die nicht zur Kategorie passen. " +
+    "Bei ok=false gib in 'hint' einen ganz kurzen Grund auf Deutsch (höchstens 6 Wörter). " +
+    "Antworte nur als JSON: {\"results\":[{\"i\":0,\"ok\":true,\"hint\":\"\"}]}",
+  render: items => JSON.stringify({ items:items.map((it, i) => ({ i, ...it })) }),
+});
+// KI-Moderator: ein lockerer Satz zu einer Situation. Läuft im Hintergrund, das Spiel wartet nie darauf.
+function aiComment(r, situation, apply){
+  if (!aiOn(r)) return;
+  AI.chat("Du bist der witzige Moderator eines Spieleabends unter Freunden (Deutsch, gerne locker österreichisch). " +
+    "Schreibe genau EINEN kurzen Satz (höchstens 22 Wörter) zur Situation, nenne gern Namen. Erfinde keine Fakten, die nicht in der Situation stehen. " + SAFE +
+    " Antworte nur als JSON: {\"text\":\"...\"}", situation, { maxTokens:400, temperature:0.9 })
+    .then(o => { const t = String(o && o.text || "").trim().slice(0, 220); if (t && apply(t) !== false) broadcast(r); })
+    .catch(() => {});
+}
+
+/* ---------------- Gedächtnis gegen Wiederholungen ----------------
+   Gezogene Fragen und Begriffe werden als kurze Kennungen gemerkt. Der Host-Browser speichert sie dauerhaft
+   und schickt sie beim Erstellen eines Raums mit, so wiederholt sich auch nach Neustarts nichts, bis eine Liste durch ist. */
+const hk = s => { let h = 5381; for (const ch of String(s)) h = ((h << 5) + h + ch.codePointAt(0)) | 0; return (h >>> 0).toString(36); };
+const seenHas = (r, k) => r.seen.has(hk(k));
+function seenAdd(r, k){ const h = hk(k); if (!r.seen.has(h)){ r.seen.add(h); r.seenOut.add.push(h); } }
+function seenDel(r, k){ const h = hk(k); if (r.seen.delete(h)) r.seenOut.del.push(h); }
+function flushSeen(r){
+  const o = r.seenOut; if (!o.add.length && !o.del.length) return;
+  const msg = `event: seen\ndata: ${JSON.stringify(o)}\n\n`;
+  for (const c of r.clients) if (c.host) c.res.write(msg);
+  r.seenOut = { add:[], del:[] };
+}
+// n Einträge ziehen, bevorzugt noch nicht gesehene; ist die Liste durch, fängt sie von vorne an
+function drawFresh(r, list, keyOf, n){
+  let fresh = list.filter(x => !seenHas(r, keyOf(x)));
+  if (fresh.length < n){ list.forEach(x => seenDel(r, keyOf(x))); fresh = list.slice(); }
+  const out = shuffle(fresh.slice()).slice(0, n); out.forEach(x => seenAdd(r, keyOf(x))); return out;
+}
+
+/* ---------------- Stadt-Land-Fluss-Blitz (jeder gegen jeden) ---------------- */
+const SLF_LETTERS = "ABCDEFGHIJKLMNOPRSTUVWZ".split("");
+const SLF_CATS = ["Stadt","Land","Fluss oder See","Tier","Vorname","Beruf","Essen","Obst oder Gemüse","Getränk","Süßigkeit oder Nachspeise",
+  "Marke","Automarke","Sportart","Fußballer","Promi","Film oder Serie","Zeichentrickfigur oder Superheld","Körperteil","Kleidungsstück",
+  "Musikinstrument","Pflanze oder Blume","Hauptstadt","Berg oder Gebirge","Insel","Gegenstand im Haushalt","Werkzeug","Spiel oder Spielzeug",
+  "Hobby","Krankheit oder Wehwehchen","Etwas im Supermarkt","Etwas, das man im Koffer hat","Etwas Rundes","Etwas, das stinkt",
+  "Verkehrsmittel","App oder Website","Videospiel","Gericht aus aller Welt","Islamische Persönlichkeit","Stadt in Österreich oder Deutschland",
+  "Land in Afrika oder Asien","Ausrede fürs Zuspätkommen","Etwas, das man nicht verlieren will","Was man am Strand findet","Schulfach oder Uni-Fach"];
+const SLF_MS = 120000, SLF_N = 5;
+const slfNorm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss")
+  .replace(/^(der|die|das|ein|eine|the|el|al)[\s-]+/, "").replace(/[^a-z0-9]+/g, " ").trim();
+const slfLetterOk = (t, L) => slfNorm(t).charAt(0).toUpperCase() === L;
+function slfStart(r, o){
+  r.g = { kind:"slf", rounds:[3,5,8].includes(+o.rounds) ? +o.rounds : 5, round:-1, usedLetters:[], scores:{}, comment:"" };
+  slfRound(r);
+}
+function slfRound(r){
+  const g = r.g; g.round++;
+  const letters = SLF_LETTERS.filter(L => !g.usedLetters.includes(L));
+  g.letter = pickRand(letters.length ? letters : SLF_LETTERS); g.usedLetters.push(g.letter);
+  g.cats = drawFresh(r, SLF_CATS, c => "sc|" + c, SLF_N);
+  g.ans = {}; g.phase = "write"; g.stopBy = null; g.endAt = Date.now() + SLF_MS; g.comment = "";
+  setTimer(r, SLF_MS, () => slfStop(r, null));
+}
+function slfAnswer(r, p, ci, text){
+  const g = r.g; if (g.phase !== "write" || !(ci >= 0 && ci < g.cats.length)) return;
+  const row = g.ans[p.id] || (g.ans[p.id] = Array(g.cats.length).fill(null));
+  const t = String(text || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!t){ row[ci] = null; return; }
+  if (row[ci] && slfNorm(row[ci].t) === slfNorm(t)) return;          // unverändert
+  const e = { t, st:"pend", hint:"", by:"" }; row[ci] = e;
+  if (!slfLetterOk(t, g.letter)){ e.st = "bad"; e.hint = "Fängt nicht mit " + g.letter + " an"; e.by = "regel"; return; }
+  if (!aiOn(r)){ e.st = "ok"; e.by = "auto"; slfMaybeStop(r, p); return; }
+  const cat = g.cats[ci];
+  slfChecker.check("slf|" + cat + "|" + g.letter + "|" + slfNorm(t), { kategorie:cat, buchstabe:g.letter, antwort:t }, res => {
+    if (r.g !== g || row[ci] !== e) return;                         // inzwischen geändert
+    if (!res){ e.st = "ok"; e.by = "auto"; }                          // KI konnte nicht prüfen: im Zweifel gültig
+    else { e.st = res.ok ? "ok" : "bad"; e.hint = res.ok ? "" : (res.hint || "Passt nicht"); e.by = "ki"; }
+    slfMaybeStop(r, p); broadcast(r);
+  });
+}
+function slfMaybeStop(r, p){
+  const g = r.g; if (g.phase !== "write") return;
+  const row = g.ans[p.id];
+  if (row && row.every(e => e && e.st === "ok")) slfStop(r, p.id);
+}
+function slfStop(r, pid){
+  const g = r.g; if (g.phase !== "write") return;
+  clearTimer(r); g.phase = "review"; g.stopBy = pid; g.endAt = null;
+  const sc = slfScore(r), best = Object.entries(sc.tot).sort((a, b) => b[1] - a[1])[0];
+  const nm = id => (r.players.find(x => x.id === id) || {}).name || "?";
+  aiComment(r, `Stadt-Land-Fluss, Buchstabe ${g.letter}. ${pid ? nm(pid) + " hat als Erstes alles richtig gehabt und gestoppt." : "Die Zeit ist abgelaufen."} ` +
+    `Antworten: ${r.players.map(p => nm(p.id) + ": " + (g.ans[p.id] || []).map((e, i) => g.cats[i] + "=" + (e ? e.t : "-")).join(", ")).join(" | ")}. ` +
+    (best ? `Vorne in dieser Runde: ${nm(best[0])} mit ${best[1]} Punkten.` : ""), t => { if (r.g !== g) return false; g.comment = t; });
+}
+// Klassische Wertung: einzige gültige Antwort 20, eigene Antwort 10, doppelte 5, leer/ungültig 0
+function slfScore(r){
+  const g = r.g, pts = {}, tot = {};
+  r.players.forEach(p => { pts[p.id] = Array(g.cats.length).fill(0); tot[p.id] = 0; });
+  g.cats.forEach((c, ci) => {
+    const valid = r.players.filter(p => g.ans[p.id] && g.ans[p.id][ci] && g.ans[p.id][ci].st === "ok");
+    const count = {}; valid.forEach(p => { const k = slfNorm(g.ans[p.id][ci].t); count[k] = (count[k] || 0) + 1; });
+    valid.forEach(p => { const v = valid.length === 1 ? 20 : count[slfNorm(g.ans[p.id][ci].t)] === 1 ? 10 : 5; pts[p.id][ci] = v; tot[p.id] += v; });
+  });
+  return { pts, tot };
+}
+function slfToggle(r, pid, ci){
+  const g = r.g; if (g.phase !== "review") return;
+  const e = g.ans[pid] && g.ans[pid][ci]; if (!e) return;
+  e.st = e.st === "ok" ? "bad" : "ok"; e.by = "host"; e.hint = e.st === "ok" ? "" : "Vom Host gestrichen";
+}
+function slfNext(r){
+  const g = r.g; if (g.phase !== "review") return;
+  const sc = slfScore(r); Object.entries(sc.tot).forEach(([id, v]) => g.scores[id] = (g.scores[id] || 0) + v);
+  if (g.round + 1 >= g.rounds){ finish(r); return; }
+  slfRound(r);
+}
+
 /* ---------------- Spielende ---------------- */
 function finish(r){
   const g = r.g; clearTimer(r);
   let ranking;
-  if (g.kind === "sch" && g.mode === "solo")
+  if ((g.kind === "sch" && g.mode === "solo") || g.kind === "slf")
     ranking = r.players.map(p => ({ name:p.name, team:p.team, score:g.scores[p.id] || 0 })).sort((a,b) => b.score - a.score);
   else
     ranking = activeTeams(r).map(t => ({ name:r.teamNames[t], team:t, score:g.teamScores[t] })).sort((a,b) => b.score - a.score);
-  g.phase = "end"; g.endAt = null; g.ranking = ranking;
+  g.phase = "end"; g.endAt = null; g.ranking = ranking; g.comment = "";
+  const names = { sch:"Schätz-Duell", leo:"Leopardy", act:"Erklären, Pantomime & Zeichnen", slf:"Stadt-Land-Fluss" };
+  aiComment(r, "Spielende bei " + names[g.kind] + ". Endstand: " + ranking.map((x, i) => (i + 1) + ". " + x.name + " " + x.score).join(", ") + ". Gratuliere dem Sieger, tröste die Letzten.",
+    t => { if (r.g !== g) return false; g.comment = t; });
 }
 
 /* ---------------- Ansichten ---------------- */
@@ -281,10 +423,11 @@ function view(r, me, host){
     you: me ? { id:me.id, name:me.name, team:me.team } : null,
     teamCount:r.teamCount,
     teams:[...Array(r.teamCount).keys()].map(t => ({ name:r.teamNames[t], members:membersOf(r,t).map(p => ({ id:p.id, name:p.name, online:p.conns > 0 })) })),
-    game:g ? g.kind : null, lastResult:r.lastResult, schCats:SCH_CATS
+    game:g ? g.kind : null, lastResult:r.lastResult, schCats:SCH_CATS,
+    ai: host ? { ...AI.status(), enabled:r.ai !== false } : undefined
   };
   if (!g) return v;
-  v.phase = g.phase; v.endAt = g.endAt || null; v.ranking = g.ranking || null;
+  v.phase = g.phase; v.endAt = g.endAt || null; v.ranking = g.ranking || null; v.comment = g.comment || "";
   if (g.teamScores) v.teamScores = g.teamScores;
   const nameOf = id => (r.players.find(p => p.id === id) || {}).name || "?";
 
@@ -300,16 +443,26 @@ function view(r, me, host){
       closest: show && g.last ? g.last.closest : [] });
   }
   if (g.kind === "leo"){
-    v.board = { cats:LEO.pool.map(c => c.name), rows:g.rows.map(lv => ({ lv, value:LEO_VALUES[lv] })), used:g.used };
+    v.board = { cats:g.cats.map(i => LEO.pool[i].name), rows:g.rows.map(lv => ({ lv, value:LEO_VALUES[lv] })), used:g.used };
     v.turn = g.turn; v.input = g.input;
     if (g.cur){
       const [q, a, note] = leoEntry(r), c = g.cur;
-      v.cur = { cat:LEO.pool[c.ci].name, value:c.v, q, tried:c.tried, wrongs:c.wrongs, buzzTeam:c.buzzTeam,
+      v.cur = { cat:leoCat(g, c.ci).name, value:c.v, checking:!!c.checking, q, tried:c.tried, wrongs:c.wrongs, buzzTeam:c.buzzTeam,
                 buzzName: c.buzzPlayer ? nameOf(c.buzzPlayer) : null, answerSec:c.answerSec || 30, ok:c.ok, winner:c.winner,
                 answer: g.phase === "result" ? a : null, note: g.phase === "result" ? (note || "") : null,
                 canSwap: g.phase === "buzz" && !c.wrongs.length,
                 peek: host && g.input === "rufen" && g.phase === "answer" ? a : null };
     }
+  }
+  if (g.kind === "slf"){
+    const review = g.phase === "review", sc = slfScore(r);
+    Object.assign(v, { letter:g.letter, cats:g.cats, round:g.round, rounds:g.rounds, stopBy:g.stopBy ? nameOf(g.stopBy) : null,
+      scores:g.scores, roundPts: review ? sc.tot : null,
+      mine: me && g.ans ? (g.ans[me.id] || []).map(e => e && { t:e.t, st:e.st, hint:e.hint }) : null,
+      prog: r.players.map(p => { const row = (g.ans && g.ans[p.id]) || []; return { id:p.id, name:p.name, online:p.conns > 0,
+        ok:row.filter(e => e && e.st === "ok").length, filled:row.filter(Boolean).length }; }),
+      table: review ? g.cats.map((c, ci) => r.players.map(p => { const e = (g.ans[p.id] || [])[ci];
+        return { id:p.id, name:p.name, t:e ? e.t : "", st:e ? e.st : "empty", hint:e ? e.hint : "", by:e ? e.by : "", pts:(sc.pts[p.id] || [])[ci] || 0 }; })) : null });
   }
   if (g.kind === "act"){
     const isExp = me && me.id === g.explainer;
@@ -332,7 +485,7 @@ function send(c){
   const me = c.host ? null : r.players.find(p => p.token === c.token);
   c.res.write(`data: ${JSON.stringify(view(r, me, c.host))}\n\n`);
 }
-function broadcast(r){ r.touched = Date.now(); for (const c of r.clients) send(c); }
+function broadcast(r){ r.touched = Date.now(); for (const c of r.clients) send(c); flushSeen(r); }
 setInterval(() => {
   for (const r of rooms.values()){
     for (const c of r.clients) c.res.write(": ping\n\n");
@@ -342,7 +495,7 @@ setInterval(() => {
 
 /* ---------------- HTTP ---------------- */
 function body(req){
-  return new Promise(res => { let s = ""; req.on("data", d => { s += d; if (s.length > 2e4) req.destroy(); });
+  return new Promise(res => { let s = ""; req.on("data", d => { s += d; if (s.length > 3e5) req.destroy(); });
     req.on("end", () => { try { res(JSON.parse(s || "{}")); } catch { res({}); } }); });
 }
 function json(res, code, obj){ res.writeHead(code, { "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store" }); res.end(JSON.stringify(obj)); }
@@ -401,7 +554,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== "POST" || !url.pathname.startsWith("/api/")){ res.writeHead(404); return res.end("Nicht gefunden"); }
 
   const b = await body(req), action = url.pathname.slice(5);
-  if (action === "create"){ const r = createRoom(); return json(res, 200, { room:r.code, hostToken:r.hostToken }); }
+  if (action === "create"){ const r = createRoom(b.seen); return json(res, 200, { room:r.code, hostToken:r.hostToken }); }
   const r = rooms.get(String(b.room || "").toUpperCase());
   if (!r) return json(res, 404, { error:"Diesen Raum gibt es nicht (mehr). Bitte den QR-Code neu scannen." });
 
@@ -426,6 +579,7 @@ const server = http.createServer(async (req, res) => {
       case "kick":    r.players = r.players.filter(p => p.id !== b.id); break;
       case "start":
         if (b.game === "sch") schStart(r, b.opts || {});
+        else if (b.game === "slf"){ if (!r.players.length) return json(res, 400, { error:"Dafür braucht es mindestens eine Person." }); slfStart(r, b.opts || {}); }
         else if (activeTeams(r).length < 2) return json(res, 400, { error:"Dafür braucht es mindestens 2 Teams mit Spielern." });
         else if (b.game === "leo") leoStart(r, b.opts || {});
         else if (b.game === "act") actStart(r, b.opts || {});
@@ -433,7 +587,10 @@ const server = http.createServer(async (req, res) => {
       case "lobby":   clearTimer(r); if (g && g.phase === "end") r.lastResult = { kind:k, ranking:g.ranking }; r.g = null; break;
       case "finish":  if (g) finish(r); break;
       case "reveal":  if (k === "sch") schReveal(r); if (k === "leo" && (g.phase === "buzz" || g.phase === "answer")){ clearTimer(r); leoResult(r); } break;
-      case "next":    if (k === "sch") schNext(r); if (k === "leo") leoContinue(r); if (k === "act") actNext(r); break;
+      case "next":    if (k === "sch") schNext(r); if (k === "leo") leoContinue(r); if (k === "act") actNext(r); if (k === "slf") slfNext(r); break;
+      case "slfToggle": if (k === "slf") slfToggle(r, String(b.id), +b.ci); break;
+      case "slfStop":   if (k === "slf") slfStop(r, null); break;
+      case "ai":        r.ai = !!b.on; break;
       case "pick":    if (k === "leo") leoPick(r, +b.ci, +b.lv); break;
       case "swap":    if (k === "leo") leoSwap(r); break;
       case "judge":   if (k === "leo" && g.input === "rufen" && g.phase === "answer") leoResolve(r, !!b.ok, b.ok ? "laut gerufen" : "laut gerufen, falsch"); break;
@@ -457,6 +614,7 @@ const server = http.createServer(async (req, res) => {
         g.guesses[p.id] = v; schMaybeAuto(r); break;
       }
       case "pick":   if (k === "leo" && p.team === g.turn) leoPick(r, +b.ci, +b.lv); break;
+      case "slfAns": if (k === "slf") slfAnswer(r, p, +b.ci, b.text); break;
       case "buzz":   if (k === "leo") leoBuzz(r, p); break;
       case "answer": if (k === "leo") leoAnswer(r, p, String(b.text || "").slice(0, 120)); break;
       case "claim":  if (k === "act" && g.phase === "who" && p.team === g.turn){ g.explainer = p.id; g.phase = "choose"; } break;
@@ -475,9 +633,17 @@ const server = http.createServer(async (req, res) => {
         if (k !== "act" || g.phase !== "run" || g.input !== "tippen" || p.id === g.explainer || !(g.all || p.team === g.turn)) break;
         const text = String(b.text || "").slice(0, 80).trim(); if (!text) break;
         const ok = isCorrect(text, g.word);
-        g.feed.push({ name:p.name, team:p.team, text: ok ? g.word : text, ok });
-        if (g.feed.length > 30) g.feed.shift();
+        const fe = { name:p.name, team:p.team, text: ok ? g.word : text, ok, pending: !ok && aiOn(r) };
+        g.feed.push(fe); if (g.feed.length > 30) g.feed.shift();
         if (ok) actMark(r, p.team);
+        else if (fe.pending){
+          const word = g.word;
+          guessChecker.check("act|" + hk(word) + "|" + slfNorm(text), { loesung:word, eingabe:text }, res => {
+            fe.pending = false;
+            if (res && res.ok && r.g === g && g.phase === "run" && g.word === word){ fe.ok = true; fe.text = word + " (" + text + ")"; actMark(r, p.team); }
+            broadcast(r);
+          });
+        }
         break;
       }
       case "fail":   if (k === "act" && p.id === g.explainer) actEnd(r); break;

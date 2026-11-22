@@ -54,6 +54,8 @@ button:disabled{opacity:.4;cursor:default}
 .bar::after{content:"";position:absolute;inset:0;width:calc(var(--p,1)*100%);background:var(--c,var(--gold));border-radius:999px;transition:width .2s linear}
 .err{color:var(--fg);background:var(--bad);margin:0;font-size:14px;font-weight:700;padding:8px 12px;border-radius:var(--r-ctl)}
 .num{font-variant-numeric:tabular-nums}
+.aicomment{margin:0;max-width:62ch;font:600 clamp(15px,1.4vw,20px)/1.45 var(--body);color:var(--fg);background:color-mix(in srgb,var(--draw) 14%,var(--ink));border:2px solid color-mix(in srgb,var(--draw) 45%,transparent);border-radius:var(--r-ctl);padding:10px 14px;text-align:left}
+.ai-tag{font:800 12px var(--display);letter-spacing:-.01em;color:var(--ink);background:var(--draw);padding:3px 7px;border-radius:7px;margin-right:4px;vertical-align:2px}
 .notice{margin:0;padding:12px 14px;border-radius:var(--r-ctl);background:var(--gold);color:var(--ink);font-weight:700;line-height:1.4}
 
 /* Phasenwechsel: ein einziger Auftritt, wenn sich das Bild ändert */

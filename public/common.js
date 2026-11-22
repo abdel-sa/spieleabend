@@ -30,7 +30,7 @@ function connect(qs, onView, onStatus, onEvent, onGone){
     es = new EventSource("/events?" + new URLSearchParams(qs));
     es.onmessage = e => { const v = JSON.parse(e.data); clockOffset = v.now - Date.now(); onStatus && onStatus(true); onView(v); };
     es.onerror = () => { onStatus && onStatus(false); watch(); };
-    ["draw", "drawsync"].forEach(t => es.addEventListener(t, e => onEvent && onEvent(t, JSON.parse(e.data))));
+    ["draw", "drawsync", "seen"].forEach(t => es.addEventListener(t, e => onEvent && onEvent(t, JSON.parse(e.data))));
   };
   open(); watch();
   return { reopen:open, close(){ closed = true; es && es.close(); } };
@@ -129,3 +129,6 @@ function makeBoard(){
   window.addEventListener("resize", () => { if (cv.isConnected) B.fit(); });
   return B;
 }
+
+/* KI-Moderator-Satz, falls die KI etwas zur Situation gesagt hat */
+function aiLine(text){ const p = el("p", "aicomment"); p.append(el("span", "ai-tag", "KI-Moderator"), " " + text); return p; }

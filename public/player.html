@@ -77,6 +77,18 @@ form.row .big{padding:16px 20px}
 .sw.eraser{width:auto;border-radius:12px;padding:0 10px;font-weight:800;font-size:13px;color:var(--ink)}
 .btn.small{padding:8px 11px;font-size:14px}
 .row.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.slf-head{display:flex;align-items:center;gap:14px}
+.slf-head .clockline{flex:1}
+.slf-letter{font:900 54px/1 var(--display);color:var(--ink);background:var(--paper);border-radius:16px;padding:4px 16px 10px;box-shadow:0 5px 0 #cfc4b0;transform:rotate(-3deg)}
+.slf-field{display:flex;flex-direction:column;gap:4px}
+.slf-field label{font-weight:800;font-size:15px;color:var(--muted)}
+.slf-in{display:flex;gap:8px;align-items:center}
+.slf-in .text{flex:1;padding:12px 14px;font-size:19px}
+.slf-st{width:34px;text-align:center;font:900 22px var(--display)}
+.slf-field.ok .text{border-color:var(--ok)} .slf-field.ok .slf-st{color:var(--ok)}
+.slf-field.bad .text{border-color:var(--bad)} .slf-field.bad .slf-st{color:var(--bad)}
+.slf-field.pend .slf-st{color:var(--gold)}
+.slf-hint{font-size:13px;font-weight:600;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -151,6 +163,7 @@ function _render(){
   if (V.game === "sch") renderSch(c);
   if (V.game === "leo") renderLeo(c);
   if (V.game === "act") renderAct(c);
+  if (V.game === "slf") renderSlf(c);
 }
 
 function renderJoin(c){
@@ -230,6 +243,7 @@ function renderLeo(c){
     else { const b = el("button", "buzz", "BUZZ"); b.onclick = () => { buzzFeel(); act("buzz"); }; c.appendChild(b); }
     const l = el("div", "clockline"); l.append(countdown(V.endAt), timebar(V.endAt, cur.wrongs.length ? 20 : 35)); c.appendChild(l);
   }
+  if (V.phase === "answer" && V.cur.checking) c.appendChild(el("p", "notice", "KI prüft die Antwort …"));
   if (V.phase === "answer"){
     if (cur.buzzTeam === my && V.input === "rufen"){
       c.appendChild(el("p", "result", (cur.buzzName === V.you.name ? "Du hast gebuzzert!" : cur.buzzName + " hat gebuzzert!") + " Sagt die Antwort laut."));
@@ -390,10 +404,54 @@ function renderAct(c){
   if (V.phase === "result") renderWords(c);
   else if (!V.watching) c.appendChild(el("p", "secret", "Den Begriff sieht nur " + (V.explainerName || "die Person, die dran ist") + (V.all ? "." : " und die anderen Teams.")));
 }
+
+/* ---------- Stadt-Land-Fluss ---------- */
+function renderSlf(c){
+  const ncat = V.cats.length;
+  if (V.phase === "write"){
+    const top = el("div", "slf-head");
+    top.append(el("span", "slf-letter", V.letter));
+    const cl = el("div", "clockline"); cl.append(countdown(V.endAt), timebar(V.endAt, 120)); top.appendChild(cl);
+    c.appendChild(top);
+    const mine = V.mine || [];
+    const okN = mine.filter(e => e && e.st === "ok").length;
+    c.appendChild(el("p", "secret", okN + " von " + ncat + " richtig. Wer zuerst alle hat, stoppt die Runde für alle!"));
+    V.cats.forEach((cat, ci) => {
+      const e = mine[ci], id = "slf-" + V.round + "-" + ci;
+      const f = el("form", "slf-field" + (e ? " " + e.st : ""));
+      const lab = el("label", null, cat); lab.htmlFor = id;
+      const row = el("div", "slf-in");
+      const i = el("input", "text"); i.id = id; i.autocomplete = "off"; i.autocapitalize = "words"; i.spellcheck = false; i.maxLength = 40; i.placeholder = V.letter + " …";
+      if (e && draft[id] == null) i.value = e.t;
+      const send = () => { if (!i.isConnected) return; const t = i.value.trim(); if ((e ? e.t : "") === t) return; act("slfAns", { ci, text:t }); };
+      i.addEventListener("blur", send);
+      f.onsubmit = ev => { ev.preventDefault(); send(); const nx = $("slf-" + V.round + "-" + (ci + 1)); if (nx) nx.focus(); else i.blur(); };
+      const ic = el("span", "slf-st", !e ? "" : e.st === "ok" ? "✓" : e.st === "bad" ? "✗" : "…");
+      row.append(i, ic); f.append(lab, row);
+      if (e && e.st === "bad") f.appendChild(el("small", "slf-hint", e.hint || "Passt nicht"));
+      if (e && e.st === "pend") f.appendChild(el("small", "slf-hint", "KI prüft …"));
+      c.appendChild(f);
+    });
+    return;
+  }
+  if (V.phase === "review"){
+    c.appendChild(el("p", "result", V.stopBy ? "Stopp! " + V.stopBy + " war am schnellsten." : "Zeit um!"));
+    const myPts = V.roundPts ? V.roundPts[V.you.id] || 0 : 0;
+    c.appendChild(el("p", "bigteam", "+" + myPts + " Punkte"));
+    const mine = V.mine || [];
+    const list = el("div", "rank");
+    V.cats.forEach((cat, ci) => { const e = mine[ci]; const row = el("div"); row.style.setProperty("--c", e && e.st === "ok" ? "var(--ok)" : "var(--bad)");
+      row.append(el("span", null, cat + ": " + (e ? e.t : "–")), el("span", "num", e && e.st === "ok" ? "✓" : "✗")); list.appendChild(row); });
+    c.appendChild(list);
+    if (V.comment) c.appendChild(aiLine(V.comment));
+    c.appendChild(el("p", "secret", "Die Auswertung steht am Fernseher. Gleich geht's weiter."));
+  }
+}
+
 function renderFeed(c){
   if (!V.feed || !V.feed.length) return;
   const m = el("div", "mates");
-  V.feed.slice(-6).forEach(x => { const s = el("span", "chip" + (x.ok ? " done" : ""), x.name + ": " + x.text + (x.ok ? " ✓" : "")); s.style.setProperty("--c", TC(x.team)); m.appendChild(s); });
+  V.feed.slice(-6).forEach(x => { const s = el("span", "chip" + (x.ok ? " done" : ""), x.name + ": " + x.text + (x.ok ? " ✓" : x.pending ? " …" : "")); s.style.setProperty("--c", TC(x.team)); m.appendChild(s); });
   c.appendChild(m);
 }
 function renderWords(c){
@@ -409,9 +467,10 @@ function renderEnd(c){
   c.appendChild(el("p", "eyebrow", "Spielende"));
   c.appendChild(el("p", "title", (r[0]?.name || "–") + " gewinnt!"));
   const d = el("div", "rank");
-  r.forEach((x, i) => { const row = el("div"); row.style.setProperty("--c", V.game === "sch" && V.mode === "solo" ? PC[i % PC.length] : TC(x.team));
+  r.forEach((x, i) => { const row = el("div"); row.style.setProperty("--c", (V.game === "sch" && V.mode === "solo") || V.game === "slf" ? PC[i % PC.length] : TC(x.team));
     row.append(el("span", null, (i+1) + ". " + x.name), el("span", "num", x.score + " P")); d.appendChild(row); });
   c.appendChild(d);
+  if (V.comment) c.appendChild(aiLine(V.comment));
 }
 
 start();

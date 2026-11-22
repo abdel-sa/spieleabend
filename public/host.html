@@ -119,6 +119,26 @@ body{padding:18px 28px 24px;min-height:100dvh;display:flex;flex-direction:column
 .podium div{display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-radius:var(--r-panel);background:var(--ink);border-left:8px solid var(--c);font:700 24px var(--body)}
 .podium div:first-child{font:900 32px var(--display);letter-spacing:-.03em;background:color-mix(in srgb,var(--c) 22%,var(--ink));padding:20px 24px;transform:scale(1.03)}
 .confirm{display:flex;gap:8px;align-items:center;font-weight:700}
+.aibox{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--ink);border-radius:var(--r-ctl);padding:10px 14px}
+.aibox .lbl{color:var(--fg);font:800 16px var(--display);letter-spacing:-.02em}
+.ai-status{font-size:14px;font-weight:600;color:var(--muted)}
+.ai-status.on{color:var(--ok)}
+.slf-top{display:flex;gap:28px;align-items:center;justify-content:center;flex-wrap:wrap}
+.slf-letter{font:900 clamp(110px,15vw,220px)/1 var(--display);color:var(--ink);background:var(--paper);border-radius:28px;padding:10px 40px 20px;box-shadow:0 10px 0 #cfc4b0;transform:rotate(-3deg)}
+.slf-cats{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.slf-cat{font:800 clamp(20px,2.2vw,32px) var(--display);letter-spacing:-.02em;background:var(--ink);padding:8px 18px;border-radius:14px}
+.slf-table{display:flex;flex-direction:column;gap:10px;width:100%;max-width:1200px;text-align:left}
+.slf-row{display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:start;background:var(--ink);border-radius:var(--r-ctl);padding:10px 12px}
+.slf-rowcat{font:800 17px var(--display);letter-spacing:-.02em;padding-top:6px}
+.slf-cells{display:flex;flex-wrap:wrap;gap:8px}
+.slf-ans{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:2px 4px;font:600 16px var(--body);border-radius:12px;padding:6px 12px;border:2px solid var(--c,var(--line));background:color-mix(in srgb,var(--c,var(--line)) 14%,transparent);color:var(--fg);text-align:left}
+.slf-ans b{color:var(--c)}
+.slf-ans .pts{font-weight:800;color:var(--gold)}
+.slf-ans.bad{opacity:.6;text-decoration:line-through;border-style:dashed}
+.slf-ans.bad .pts{color:var(--bad)}
+.slf-ans small{flex-basis:100%;font-size:12px;text-decoration:none;color:var(--muted)}
+.slf-ans.empty{opacity:.4;border:2px dashed var(--line);background:transparent}
+@media (max-width:900px){ .slf-row{grid-template-columns:1fr} }
 @media (max-width:900px){ .lobby{grid-template-columns:1fr} .join{position:static;transform:none} body{padding:14px 16px 20px} }
 </style>
 </head>
@@ -142,6 +162,7 @@ const opts = store.get("spieleabend-opts") || { sch:{ mode:"solo", rounds:10, ti
 opts.leo.input = opts.leo.input || "tippen"; opts.act.input = opts.act.input || "rufen";
 if (![20,30,40,50].includes(opts.act.goal)) opts.act.goal = 30;
 if (opts.act.all !== "aus") opts.act.all = "an";
+if (!opts.slf || ![3,5,8].includes(opts.slf.rounds)) opts.slf = { rounds:5 };
 if (!Array.isArray(opts.act.modes) || !opts.act.modes.length) opts.act.modes = ["say","mime","draw"];
 const MODE_N = { say:"Erklären", mime:"Pantomime", draw:"Zeichnen" }, MODE_C = { say:"var(--say)", mime:"var(--mime)", draw:"var(--draw)" };
 const board = makeBoard();
@@ -176,7 +197,7 @@ if (musicOn){
 
 async function boot(){
   if (!H){
-    try { H = await post("create", {}); store.set("spieleabend-host", H); }
+    try { H = await post("create", { seen:store.get("spieleabend-seen") || [] }); store.set("spieleabend-host", H); }
     catch(e){ $("conn").textContent = "Server nicht erreichbar, neuer Versuch …"; $("conn").classList.add("off"); setTimeout(boot, 3000); return; }
   }
   if (sse) sse.close();
@@ -184,7 +205,7 @@ async function boot(){
     if (!v.host){ roomGone(); return; }
     V = v; render();
   }, ok => { $("conn").textContent = ok ? "" : "Verbindung weg …"; $("conn").classList.toggle("off", !ok); },
-  (t, d) => { if (t === "draw") board.add(d); else board.sync(d); },
+  (t, d) => { if (t === "seen") updateSeen(d); else if (t === "draw") board.add(d); else board.sync(d); },
   roomGone);
 }
 // Raum ist weg (z. B. Server neu gestartet): ohne Neuladen sofort einen neuen Raum anlegen, die Musik läuft weiter
@@ -195,6 +216,54 @@ function roomGone(){
   store.del("spieleabend-host"); H = null; confirmEnd = false; lastPhase = "";
   newRoomNote = "Der alte Raum war weg, z. B. weil der Server neu gestartet wurde. Hier ist ein neuer: bitte alle nochmal scannen.";
   boot().finally(() => { restarting = false; });
+}
+
+
+/* ---------- Stadt-Land-Fluss ---------- */
+function renderSlf(st){
+  st.appendChild(el("p", "eyebrow", "Stadt-Land-Fluss, Runde " + (V.round + 1) + " von " + V.rounds));
+  if (V.phase === "write"){
+    const top = el("div", "slf-top");
+    top.append(el("div", "slf-letter", V.letter));
+    const cats = el("div", "slf-cats"); V.cats.forEach(c => cats.appendChild(el("span", "slf-cat", c))); top.appendChild(cats);
+    st.appendChild(top);
+    st.append(countdown(V.endAt), timebar(V.endAt, 120));
+    const pr = el("div", "chips");
+    V.prog.forEach((p, i) => { const c = el("span", "chip" + (p.ok === V.cats.length ? " done" : "") + (p.online ? "" : " off"), p.name + " " + p.ok + "/" + V.cats.length);
+      c.style.setProperty("--c", PC[i % PC.length]); pr.appendChild(c); });
+    st.appendChild(pr);
+    st.appendChild(el("p", "muted", "Wer als Erstes alle " + V.cats.length + " Kategorien richtig hat, stoppt die Runde für alle." + (V.ai && V.ai.enabled && V.ai.on ? " Die KI prüft jede Antwort." : "")));
+    const b = el("button", "btn", "Runde jetzt stoppen"); b.onclick = () => host("slfStop"); st.appendChild(b);
+    return;
+  }
+  if (V.phase === "review"){
+    st.classList.add("top");
+    const v = el("p", "verdict"); v.append("Buchstabe " + V.letter + ": ", V.stopBy ? V.stopBy + " hat gestoppt!" : "Zeit um!"); st.appendChild(v);
+    if (V.comment) st.appendChild(aiLine(V.comment));
+    const t = el("div", "slf-table");
+    V.cats.forEach((cat, ci) => {
+      const row = el("div", "slf-row"); row.appendChild(el("div", "slf-rowcat", cat));
+      const cells = el("div", "slf-cells");
+      V.table[ci].forEach((x, pi) => {
+        if (x.st === "empty"){ const c = el("span", "slf-ans empty", x.name + ": –"); cells.appendChild(c); return; }
+        const c = el("button", "slf-ans " + x.st); c.style.setProperty("--c", PC[pi % PC.length]);
+        c.title = x.st === "ok" ? "Klicken, um zu streichen" : "Klicken, um gelten zu lassen";
+        c.append(el("b", null, x.name + ": "), x.t, el("span", "pts", x.st === "ok" ? " +" + x.pts : x.st === "pend" ? " …" : " ✗"));
+        if (x.st === "bad" && x.hint) c.appendChild(el("small", null, x.hint));
+        c.onclick = () => host("slfToggle", { id:x.id, ci });
+        cells.appendChild(c);
+      });
+      row.appendChild(cells); t.appendChild(row);
+    });
+    st.appendChild(t);
+    st.appendChild(el("p", "muted", "Einzige gültige Antwort 20, eigene 10, doppelte 5. Antwort anklicken, um ein Urteil umzudrehen."));
+    const n = el("button", "big", V.round + 1 >= V.rounds ? "Zum Ergebnis" : "Nächste Runde"); n.onclick = () => host("next"); st.appendChild(n);
+  }
+}
+function updateSeen(d){
+  const set = new Set(store.get("spieleabend-seen") || []);
+  (d.del || []).forEach(h => set.delete(h)); (d.add || []).forEach(h => set.add(h));
+  store.set("spieleabend-seen", [...set].slice(-15000));
 }
 
 /* ---------- Render ---------- */
@@ -231,12 +300,18 @@ function _render(){
   else if (V.game === "sch") renderSch(st);
   else if (V.game === "leo") renderLeo(st);
   else if (V.game === "act") renderAct(st);
+  else if (V.game === "slf") renderSlf(st);
   renderScores();
 }
 
 function renderScores(){
   const s = $("scores"); s.innerHTML = "";
   if (!V.game) return;
+  if (V.game === "slf"){
+    const list = V.prog.map((p, i) => ({ ...p, c:PC[i % PC.length], score:(V.scores[p.id] || 0) + (V.roundPts ? V.roundPts[p.id] || 0 : 0) })).sort((a, b) => b.score - a.score);
+    list.forEach((p, i) => { const d = el("div", "sc"); d.style.setProperty("--c", p.c); d.append(el("span", "n", (i + 1) + ". " + p.name), el("span", "p", p.score)); s.appendChild(d); });
+    return;
+  }
   if (V.game === "sch" && V.mode === "solo"){
     const list = V.guesses.map(p => ({ ...p, score:V.scores[p.id] || 0 })).sort((a,b) => b.score - a.score);
     list.forEach((p, i) => { const d = el("div", "sc"); d.style.setProperty("--c", PC[V.guesses.findIndex(x => x.id === p.id) % PC.length]);
@@ -272,6 +347,12 @@ function renderLobby(st){
 
   const side = el("div", "side");
   if (newRoomNote) side.appendChild(el("p", "notice", newRoomNote));
+  if (V.ai){
+    const ab = el("div", "aibox");
+    ab.append(el("span", "lbl", "KI-Helfer"), seg(["an","aus"], V.ai.enabled ? "an" : "aus", m => m === "an" ? "An" : "Aus", m => host("ai", { on:m === "an" })));
+    ab.appendChild(el("span", "ai-status" + (V.ai.on && V.ai.enabled ? " on" : ""), !V.ai.enabled ? "Ausgeschaltet, die Spiele prüfen nur nach eigenen Regeln" : V.ai.text));
+    side.appendChild(ab);
+  }
   if (V.lastResult){ const l = el("div", "last"); l.append("Letztes Spiel: "); l.appendChild(el("b", null, V.lastResult.ranking[0]?.name || "–")); l.append(" hat gewonnen."); side.appendChild(l); }
   const head = el("div", "row");
   head.append(el("span", "lbl", "Teams"), seg([2,3,4], V.teamCount, n => n + " Teams", n => host("teams", { n })));
@@ -325,7 +406,10 @@ function renderLobby(st){
   s3.append(opt("Modi (zufällig gemischt)", ms));
   s3.append(el("p", null, opts.act.all === "an" ? "Ab und zu (etwa jede 7. Runde) dürfen alle Teams mitraten, Punkte bekommt, wer es zuerst errät." : "Es rät immer nur das Team, das gerade dran ist."));
   const g3 = el("button", "big", "Starten"); g3.onclick = () => host("start", { game:"act", opts:opts.act }); s3.appendChild(g3);
-  gs.append(s1, s2, s3); side.appendChild(gs);
+  const s4 = el("div", "game"); s4.append(el("h3", null, "Stadt-Land-Fluss-Blitz"), el("p", null, "Jeder gegen jeden: ein Buchstabe, 5 zufällige Kategorien. Die KI prüft jede Antwort sofort. Wer als Erstes alles richtig hat, stoppt die Runde für alle."));
+  s4.append(opt("Runden", seg([3,5,8], opts.slf.rounds, n => n + " Runden", n => opts.slf.rounds = n)));
+  const g4 = el("button", "big", "Starten"); g4.onclick = () => host("start", { game:"slf", opts:opts.slf }); s4.appendChild(g4);
+  gs.append(s1, s2, s3, s4); side.appendChild(gs);
   L.appendChild(side); st.appendChild(L);
 }
 
@@ -362,6 +446,7 @@ function renderSch(st){
   const vd = el("p", "verdict", !best.length ? "Keiner hat geschätzt" : best.map(p => p.name).join(" & ") + (best.length > 1 ? " sind gleich nah" : " holt den Punkt"));
   if (best.length === 1) vd.style.color = schColor(best[0]);
   st.appendChild(vd);
+  if (V.comment) st.appendChild(aiLine(V.comment));
   const nb = el("button", "big", V.round + 1 >= V.total ? "Zum Ergebnis" : "Nächste Frage"); nb.onclick = () => host("next"); st.appendChild(nb);
 }
 
@@ -398,6 +483,7 @@ function renderLeo(st){
     const r = el("button", "btn", "Auflösen"); r.onclick = () => host("reveal"); ct.appendChild(r);
     st.appendChild(ct);
   }
+  if (V.phase === "answer" && V.cur.checking) st.appendChild(el("p", "notice", "KI prüft die Antwort …"));
   if (V.phase === "answer"){
     const v = el("p", "verdict"); const b = el("span", null, tn(c.buzzTeam)); b.style.color = TC(c.buzzTeam);
     v.append(b, " hat gebuzzert"); st.appendChild(v);
@@ -467,7 +553,7 @@ function renderAct(st){
     }
     if (V.input === "tippen"){
       const fd = el("div", "chips");
-      V.feed.forEach(x => { const c = el("span", "chip" + (x.ok ? " done" : ""), x.name + ": " + x.text + (x.ok ? " ✓" : "")); c.style.setProperty("--c", TC(x.team)); fd.appendChild(c); });
+      V.feed.forEach(x => { const c = el("span", "chip" + (x.ok ? " done" : ""), x.name + ": " + x.text + (x.ok ? " ✓" : x.pending ? " (KI prüft …)" : "")); c.style.setProperty("--c", TC(x.team)); fd.appendChild(c); });
       st.appendChild(fd);
     }
     const ct = el("div", "ctrl");
@@ -495,9 +581,10 @@ function renderEnd(st){
   const top = r.filter(x => x.score === r[0]?.score);
   st.appendChild(el("p", "huge", top.length > 1 ? "Unentschieden!" : (r[0]?.name || "–") + " gewinnt!"));
   const p = el("div", "podium");
-  r.forEach((x, i) => { const d = el("div"); d.style.setProperty("--c", V.game === "sch" && V.mode === "solo" ? PC[i % PC.length] : TC(x.team));
+  r.forEach((x, i) => { const d = el("div"); d.style.setProperty("--c", (V.game === "sch" && V.mode === "solo") || V.game === "slf" ? PC[i % PC.length] : TC(x.team));
     d.append(el("span", null, (i+1) + ". " + x.name), el("span", "num", x.score + " P")); p.appendChild(d); });
   st.appendChild(p);
+  if (V.comment) st.appendChild(aiLine(V.comment));
   const b = el("button", "big", "Zurück zur Lobby"); b.onclick = () => host("lobby"); st.appendChild(b);
 }
 
