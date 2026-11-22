@@ -88,7 +88,9 @@ function schReveal(r){
   g.last = { pts, hit, closest };
   g.phase = "reveal"; g.endAt = null; g.comment = "";
   const nm = id => (r.players.find(x => x.id === id) || {}).name || "?";
-  if (ids.length) aiComment(r, "Schätzfrage: " + Q[0] + " Richtige Antwort: " + a + " " + Q[2] + ". Geschätzte Werte (keine Punkte): " + ids.map(id => nm(id) + " schätzte " + g.guesses[id] + " " + Q[2]).join(", ") +
+  if (ids.length) aiComment(r, "Schätzfrage: " + Q[0] + " Richtige Antwort: " + a + " " + Q[2] + ". Geschätzte Werte (keine Punkte), Abweichung schon ausgerechnet, bitte genau diese Zahlen verwenden und nicht selbst rechnen: " +
+    ids.map(id => { const dv = g.guesses[id] - a, f = x => Number(Math.round(x * 100) / 100).toLocaleString("de-AT");
+      return nm(id) + " schätzte " + f(g.guesses[id]) + " " + Q[2] + " (" + (dv === 0 ? "genau richtig" : f(Math.abs(dv)) + " " + (year ? "Jahre" : Q[2]) + (dv > 0 ? " zu viel" : " zu wenig")) + ")"; }).join(", ") +
     ". Am nächsten dran: " + closest.map(nm).join(" und ") + ".", t => { if (r.g !== g || g.phase !== "reveal" || g.order[g.round] !== qi) return false; g.comment = t; });
 }
 function schNext(r){
