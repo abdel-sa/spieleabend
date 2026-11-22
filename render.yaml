@@ -5,3 +5,6 @@ services:
     plan: free
     buildCommand: "echo keine Pakete nötig"
     startCommand: node server.js
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false

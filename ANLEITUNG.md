@@ -49,3 +49,22 @@ Gut zu wissen beim Gratis-Plan:
   Solange der Host-Bildschirm offen ist, pingt er den Server regelmäßig an und hält ihn wach.
 - Schläft er doch ein oder wird neu gestartet, sind die Räume weg: dann einfach den neuen QR-Code scannen.
 - Jede Gruppe hat ihren eigenen Raum-Code, mehrere Spieleabende gleichzeitig sind kein Problem.
+
+## KI-Helfer (optional, über Groq)
+Mit einem kostenlosen Groq-Schlüssel hilft eine KI in allen Spielen mit:
+- **Stadt-Land-Fluss:** prüft jede Antwort sofort (gibt es das, passt es zur Kategorie?).
+- **Leopardy und Erklären/Pantomime/Zeichnen (Eintippen):** erkennt richtige Antworten, die anders geschrieben sind (Synonyme, Kurzformen, englische Namen).
+- **KI-Moderator:** ein lockerer Satz nach jeder Schätz-Auflösung, jeder Stadt-Land-Fluss-Runde und am Spielende.
+
+Einrichten:
+1. Auf https://console.groq.com anmelden → „API Keys“ → neuen Schlüssel erstellen und kopieren.
+2. Bei Render: Dienst „spieleabend“ → „Environment“ → `GROQ_API_KEY` mit dem Schlüssel eintragen → speichern (Render startet neu).
+3. Lokal: `GROQ_API_KEY=dein_schlüssel node server.js` (Windows: `set GROQ_API_KEY=dein_schlüssel && node server.js`).
+
+Am Host-Bildschirm steht in der Lobby, ob die KI bereit ist, und man kann sie dort ausschalten.
+Ohne Schlüssel laufen alle Spiele normal weiter, nur ohne KI-Prüfung (bei Stadt-Land-Fluss zählt dann der Anfangsbuchstabe, der Host kann streichen).
+Der Gratis-Tarif hat Grenzen (ungefähr 30 Anfragen pro Minute und 1.000 pro Tag), deshalb bündelt das Spiel die Prüfungen.
+
+## Keine Wiederholungen
+Der Host-Browser merkt sich, welche Fragen, Begriffe und Kategorien schon dran waren, auch über Neustarts hinweg.
+Erst wenn eine Liste komplett durch ist, fängt sie von vorne an. Wer das zurücksetzen will: Browserdaten der Seite löschen.
