@@ -146,7 +146,7 @@ if (!Array.isArray(opts.act.modes) || !opts.act.modes.length) opts.act.modes = [
 const MODE_N = { say:"Erklären", mime:"Pantomime", draw:"Zeichnen" }, MODE_C = { say:"var(--say)", mime:"var(--mime)", draw:"var(--draw)" };
 const board = makeBoard();
 const saveOpts = () => store.set("spieleabend-opts", opts);
-const host = (what, data) => post("host", { room:H.room, hostToken:H.hostToken, do:what, ...(data||{}) }).catch(e => flash(e.message));
+const host = (what, data) => post("host", { room:H.room, hostToken:H.hostToken, do:what, ...(data||{}) }).catch(e => { if (e.status === 404) roomGone(); else flash(e.message); });
 
 function joinUrl(){
   const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
@@ -175,14 +175,26 @@ if (musicOn){
 }
 
 async function boot(){
-  if (!H){ H = await post("create", {}); store.set("spieleabend-host", H); }
+  if (!H){
+    try { H = await post("create", {}); store.set("spieleabend-host", H); }
+    catch(e){ $("conn").textContent = "Server nicht erreichbar, neuer Versuch …"; $("conn").classList.add("off"); setTimeout(boot, 3000); return; }
+  }
+  if (sse) sse.close();
   sse = connect({ room:H.room, host:H.hostToken }, v => {
-    if (!v.host){ store.del("spieleabend-host"); location.reload(); return; }
+    if (!v.host){ roomGone(); return; }
     V = v; render();
   }, ok => { $("conn").textContent = ok ? "" : "Verbindung weg …"; $("conn").classList.toggle("off", !ok); },
-  (t, d) => { if (t === "draw") board.add(d); else board.sync(d); });
-  // Raum existiert nicht mehr (Server neu gestartet): neuen erstellen
-  fetch("/events?room=" + H.room).then(r => { if (r.status === 404){ store.del("spieleabend-host"); location.reload(); } else r.body?.cancel(); });
+  (t, d) => { if (t === "draw") board.add(d); else board.sync(d); },
+  roomGone);
+}
+// Raum ist weg (z. B. Server neu gestartet): ohne Neuladen sofort einen neuen Raum anlegen, die Musik läuft weiter
+let newRoomNote = "", restarting = false;   // Hinweis bleibt in der Lobby, bis das nächste Spiel startet
+function roomGone(){
+  if (restarting) return; restarting = true;
+  if (sse) sse.close();
+  store.del("spieleabend-host"); H = null; confirmEnd = false; lastPhase = "";
+  newRoomNote = "Der alte Raum war weg, z. B. weil der Server neu gestartet wurde. Hier ist ein neuer: bitte alle nochmal scannen.";
+  boot().finally(() => { restarting = false; });
 }
 
 /* ---------- Render ---------- */
@@ -213,6 +225,7 @@ function _render(){
   const st = $("stage"); st.innerHTML = ""; st.className = "stage";
   const pk = [V.game, V.phase, V.round, V.cur && [V.cur.q, V.cur.ci, V.cur.lv].join("/"), V.explainer, V.turn].join("|");
   if (pk !== lastPhase){ lastPhase = pk; st.classList.add("enter"); setTimeout(() => st.classList.remove("enter"), 700); }
+  if (inGame) newRoomNote = "";
   if (!inGame) renderLobby(st);
   else if (V.phase === "end") renderEnd(st);
   else if (V.game === "sch") renderSch(st);
@@ -258,6 +271,7 @@ function renderLobby(st){
   L.appendChild(j);
 
   const side = el("div", "side");
+  if (newRoomNote) side.appendChild(el("p", "notice", newRoomNote));
   if (V.lastResult){ const l = el("div", "last"); l.append("Letztes Spiel: "); l.appendChild(el("b", null, V.lastResult.ranking[0]?.name || "–")); l.append(" hat gewonnen."); side.appendChild(l); }
   const head = el("div", "row");
   head.append(el("span", "lbl", "Teams"), seg([2,3,4], V.teamCount, n => n + " Teams", n => host("teams", { n })));

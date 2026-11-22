@@ -54,6 +54,7 @@ button:disabled{opacity:.4;cursor:default}
 .bar::after{content:"";position:absolute;inset:0;width:calc(var(--p,1)*100%);background:var(--c,var(--gold));border-radius:999px;transition:width .2s linear}
 .err{color:var(--fg);background:var(--bad);margin:0;font-size:14px;font-weight:700;padding:8px 12px;border-radius:var(--r-ctl)}
 .num{font-variant-numeric:tabular-nums}
+.notice{margin:0;padding:12px 14px;border-radius:var(--r-ctl);background:var(--gold);color:var(--ink);font-weight:700;line-height:1.4}
 
 /* Phasenwechsel: ein einziger Auftritt, wenn sich das Bild ändert */
 .enter > *{animation:pop .42s var(--press) both;animation-delay:calc(var(--i,0) * 45ms)}

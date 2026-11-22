@@ -9,17 +9,31 @@ const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catc
                 del(k){ try { localStorage.removeItem(k); } catch(e){} } };
 
 let clockOffset = 0;
-function connect(qs, onView, onStatus, onEvent){
-  let es;
+// Verbindung zum Raum. Bricht sie ab, prüft ein Wächter alle 2 s, ob der Raum noch existiert:
+// ja -> neu verbinden (WLAN-Aussetzer, Server-Neustart), nein -> onGone (Raum ist weg).
+function connect(qs, onView, onStatus, onEvent, onGone){
+  let es, timer = null, closed = false;
+  const watch = () => {
+    if (timer || closed) return;
+    timer = setInterval(async () => {
+      if (closed){ clearInterval(timer); timer = null; return; }
+      if (es && es.readyState === 1){ clearInterval(timer); timer = null; return; }
+      try {
+        const r = await fetch("/exists?room=" + encodeURIComponent(qs.room), { cache:"no-store" });
+        if (r.status === 404){ clearInterval(timer); timer = null; closed = true; if (es) es.close(); onGone && onGone(); }
+        else if (r.ok && (!es || es.readyState === 2)) open();
+      } catch(e){ /* Server gerade nicht erreichbar, weiter warten */ }
+    }, 2000);
+  };
   const open = () => {
     if (es) es.close();
     es = new EventSource("/events?" + new URLSearchParams(qs));
     es.onmessage = e => { const v = JSON.parse(e.data); clockOffset = v.now - Date.now(); onStatus && onStatus(true); onView(v); };
-    es.onerror = () => { onStatus && onStatus(false); };
+    es.onerror = () => { onStatus && onStatus(false); watch(); };
     ["draw", "drawsync"].forEach(t => es.addEventListener(t, e => onEvent && onEvent(t, JSON.parse(e.data))));
   };
-  open();
-  return { reopen:open, close(){ es && es.close(); } };
+  open(); watch();
+  return { reopen:open, close(){ closed = true; es && es.close(); } };
 }
 async function post(path, data){
   const r = await fetch("/api/" + path, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });

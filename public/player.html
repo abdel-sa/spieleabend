@@ -90,7 +90,15 @@ const qs = new URLSearchParams(location.search);
 let room = (qs.get("r") || store.get("spieleabend-room") || "").toUpperCase();
 let token = room ? (store.get("spieleabend-token-" + room) || "") : "";
 let V = null, sse = null, lastKey = "", draft = {};
-const act = (what, data) => post("act", { room, token, do:what, ...(data||{}) }).catch(e => { if (e.status === 401){ store.del("spieleabend-token-" + room); token = ""; render(); } else toast(e.message); });
+const act = (what, data) => post("act", { room, token, do:what, ...(data||{}) }).catch(e => { if (e.status === 404) roomGone(); else if (e.status === 401){ store.del("spieleabend-token-" + room); token = ""; render(); } else toast(e.message); });
+// Raum ist weg (z. B. Server neu gestartet): zurück zur Code-Eingabe statt auf der alten Frage hängen zu bleiben
+function roomGone(){
+  if (sse){ sse.close(); sse = null; }
+  if (room){ store.del("spieleabend-token-" + room); }
+  store.del("spieleabend-room"); room = ""; token = ""; V = null; lastKey = "";
+  try { history.replaceState(null, "", "/"); } catch(e){}
+  renderCode("Der Raum ist weg, z. B. weil der Server neu gestartet wurde. Scanne den neuen QR-Code am Fernseher oder gib den neuen Code ein.");
+}
 const buzzFeel = () => { try { navigator.vibrate && navigator.vibrate(60); } catch(e){} };
 function toast(m){ const p = el("p", "err", m); $("card").prepend(p); setTimeout(() => p.remove(), 3500); }
 
@@ -105,8 +113,8 @@ function start(){
     const fresh = key !== lastKey; lastKey = key; V = v; render();
     if (fresh){ const cd = $("card"); cd.classList.add("enter"); setTimeout(() => cd.classList.remove("enter"), 700); }
   }, ok => { const c = document.querySelector(".head .conn"); if (c) c.textContent = ok ? "" : "offline"; },
-  (t, d) => { if (t === "drawsync" && V && V.isExplainer && !pad.B.strokes.length) pad.B.sync(d); });
-  fetch("/events?room=" + room).then(r => { if (r.status === 404){ store.del("spieleabend-room"); room = ""; renderCode("Diesen Raum gibt es nicht mehr. Bitte den neuen QR-Code scannen."); } else r.body?.cancel(); });
+  (t, d) => { if (t === "drawsync" && V && V.isExplainer && !pad.B.strokes.length) pad.B.sync(d); },
+  roomGone);
 }
 
 /* Eingaben bei Updates behalten */
@@ -120,9 +128,9 @@ function keepInputs(fn){
 
 function renderCode(msg){
   $("head").innerHTML = "";
-  const c = $("card"); c.innerHTML = "";
+  const c = $("card"); c.innerHTML = ""; c.style.removeProperty("--c"); c.style.removeProperty("--mc");
   c.appendChild(el("h1", "title", "Spieleabend"));
-  c.appendChild(el("p", "wait", msg || "Scanne den QR-Code am Host-Bildschirm oder gib den Raum-Code ein."));
+  c.appendChild(el("p", msg ? "notice" : "wait", msg || "Scanne den QR-Code am Host-Bildschirm oder gib den Raum-Code ein."));
   const f = el("form", "row"); const i = el("input", "text"); i.id = "code"; i.maxLength = 4; i.placeholder = "z. B. KXQT"; i.autocapitalize = "characters"; i.style.flex = "1";
   const b = el("button", "big", "Weiter"); f.append(i, b);
   f.onsubmit = e => { e.preventDefault(); room = i.value.trim().toUpperCase(); if (room.length === 4){ token = store.get("spieleabend-token-" + room) || ""; start(); } };

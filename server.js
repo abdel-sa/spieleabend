@@ -374,6 +374,11 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/ping"){ res.writeHead(204); return res.end(); }   // hält Gratis-Hoster wach
   if (req.method === "GET" && url.pathname === "/music.mp3") return sendMusic(req, res);
+  // Leichte Prüfung, ob ein Raum noch existiert (für den automatischen Neustart der Seiten)
+  if (req.method === "GET" && url.pathname === "/exists"){
+    const ok = rooms.has((url.searchParams.get("room") || "").toUpperCase());
+    res.writeHead(ok ? 204 : 404, { "Cache-Control":"no-store" }); return res.end();
+  }
   if (req.method === "GET" && url.pathname === "/events"){
     const r = rooms.get((url.searchParams.get("room") || "").toUpperCase());
     if (!r){ res.writeHead(404); return res.end(); }
