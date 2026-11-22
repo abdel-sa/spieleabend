@@ -183,12 +183,12 @@ function leoSwap(r){
 }
 
 /* ---------------- Activity: Erklären, Pantomime, Zeichnen ---------------- */
-// Stufen 1–5. Jeder Treffer hebt die Stufe um 1 und zählt 1 Punkt. Überspringen bleibt auf der Stufe.
+// Stufen 1–5. Jeder Treffer hebt die Stufe um 1. Punkte pro Begriff = gewählter Einstieg (Leicht 1, Mittel 2, Schwer 3), die ganze Runde gleich.
 const ACT_MODES = ["say", "mime", "draw"];
-const actPts = () => 1;
+const actPts = g => g.base || 1;
 function actStart(r, o){
   const modes = Array.isArray(o.modes) ? ACT_MODES.filter(m => o.modes.includes(m)) : [];
-  r.g = { kind:"act", input:o.input === "tippen" ? "tippen" : "rufen", feed:[], time:[60,90,120].includes(+o.time) ? +o.time : 90, goal:[10,15,20,30].includes(+o.goal) ? +o.goal : 15,
+  r.g = { kind:"act", input:o.input === "tippen" ? "tippen" : "rufen", feed:[], time:[60,90,120].includes(+o.time) ? +o.time : 90, goal:[20,30,40,50].includes(+o.goal) ? +o.goal : 30,
           modes: modes.length ? modes : ACT_MODES.slice(), allTeams:o.all !== "aus", turn:pickRand(activeTeams(r)), expIdx:Array(r.teamCount).fill(0), teamScores:Array(r.teamCount).fill(0) };
   actTurn(r);
 }
@@ -197,7 +197,7 @@ function actTurn(r){
   g.suggest = list.length ? list[g.expIdx[g.turn] % list.length].id : null;   // Vorschlag, das Team entscheidet selbst
   g.explainer = null;
   g.mode = pickRand(g.modes); g.all = g.allTeams && Math.random() < 0.15;   // vom Host abschaltbar
-  g.phase = "who"; g.level = null; g.word = null; g.words = []; g.feed = []; g.endAt = null; actClearDrawing(g); clearTimer(r);
+  g.phase = "who"; g.level = null; g.base = null; g.word = null; g.words = []; g.feed = []; g.endAt = null; actClearDrawing(g); clearTimer(r);
 }
 function actDraw(r, exclude){
   const g = r.g, list = ACT[g.mode][g.level], key = w => g.mode + "|" + w;
@@ -210,7 +210,7 @@ function actClearDrawing(g){ g.drawN = (g.drawN || 0) + 1; g.strokes = []; g.dra
 // Ein Begriff erraten (team) oder übersprungen (null): Punkte gutschreiben, Stufe hoch, sofort der nächste Begriff
 function actMark(r, team){
   const g = r.g; if (g.phase !== "run") return;
-  const pts = team != null ? actPts(g.level) : 0;
+  const pts = team != null ? actPts(g) : 0;
   g.words.push({ w:g.word, team, pts, lv:g.level });
   if (team != null){ g.teamScores[team] += pts; g.level = Math.min(5, g.level + 1); }
   actNewWord(r, g.word);
@@ -317,7 +317,7 @@ function view(r, me, host){
     const watch = !!me && !isExp && !g.all && me.team !== g.turn && (g.phase === "ready" || g.phase === "run");
     Object.assign(v, { turn:g.turn, explainer:g.explainer, explainerName:g.explainer ? nameOf(g.explainer) : null,
       suggest:g.suggest, suggestName:g.suggest ? nameOf(g.suggest) : null,
-      mode:g.mode, modes:g.modes, all:g.all, level:g.level, pts:g.level ? actPts(g.level) : null, goal:g.goal, time:g.time, drawN:g.drawN,
+      mode:g.mode, modes:g.modes, all:g.all, level:g.level, pts:g.level ? actPts(g) : null, goal:g.goal, time:g.time, drawN:g.drawN,
       word: g.word != null && g.phase !== "result" && (isExp || watch) ? g.word : null, isExplainer:!!isExp, watching:watch,
       guessed: g.words.filter(x => x.team != null).length, input:g.input, feed:g.feed.slice(-8),
       canType: !!me && g.input === "tippen" && g.phase === "run" && !isExp && (g.all || me.team === g.turn),
@@ -456,7 +456,7 @@ const server = http.createServer(async (req, res) => {
       case "answer": if (k === "leo") leoAnswer(r, p, String(b.text || "").slice(0, 120)); break;
       case "claim":  if (k === "act" && g.phase === "who" && p.team === g.turn){ g.explainer = p.id; g.phase = "choose"; } break;
       case "unclaim":if (k === "act" && (g.phase === "choose" || g.phase === "ready") && p.id === g.explainer){ g.explainer = null; g.level = null; g.word = null; g.phase = "who"; } break;
-      case "diff":   if (k === "act" && g.phase === "choose" && p.id === g.explainer && [1,2,3].includes(+b.level)){ g.level = +b.level; actNewWord(r); g.phase = "ready"; } break;
+      case "diff":   if (k === "act" && g.phase === "choose" && p.id === g.explainer && [1,2,3].includes(+b.level)){ g.level = g.base = +b.level; actNewWord(r); g.phase = "ready"; } break;
       case "swapWord": if (k === "act" && g.phase === "ready" && p.id === g.explainer) actNewWord(r, g.word); break;
       case "skip":   if (k === "act" && g.phase === "run" && p.id === g.explainer) actMark(r, null); break;
       case "draw":
